@@ -1,0 +1,184 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:ProductivityMcp.App.ViewModels"
+        x:Class="ProductivityMcp.App.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="Productivity MCP"
+        Width="820"
+        Height="720"
+        MinWidth="680"
+        MinHeight="580"
+        WindowStartupLocation="CenterScreen"
+        Background="#F5F7FB"
+        Opened="MainWindow_OnOpened">
+
+  <Window.Styles>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="BorderBrush" Value="#E2E5EA" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="22" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="#686D78" />
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#5B5BD6" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Padding" Value="18,10" />
+      <Setter Property="CornerRadius" Value="7" />
+    </Style>
+    <Style Selector="Button.secondary">
+      <Setter Property="Background" Value="#F2F3F5" />
+      <Setter Property="BorderBrush" Value="#D9DCE1" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="14,8" />
+      <Setter Property="CornerRadius" Value="7" />
+    </Style>
+  </Window.Styles>
+
+  <ScrollViewer HorizontalContentAlignment="Center">
+    <StackPanel Margin="36,30,36,36" Spacing="20" MaxWidth="820"
+                HorizontalAlignment="Stretch">
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+        <Border Width="44" Height="44" CornerRadius="11" Background="#5B5BD6">
+          <TextBlock Text="P" Foreground="White" FontSize="22" FontWeight="Bold"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Text="Productivity MCP" FontSize="24" FontWeight="SemiBold" />
+          <TextBlock Text="Google Calendar &amp; Tasks" Classes="muted" />
+        </StackPanel>
+      </Grid>
+
+      <Border Classes="card" Background="#EEF2FF" BorderBrush="#C7D2FE"
+              IsVisible="{Binding IsBusy}">
+        <StackPanel Spacing="8">
+          <ProgressBar IsIndeterminate="True" Height="4" />
+          <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding StatusDetail}" Classes="muted" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" IsVisible="{Binding NeedsCredentials}">
+        <StackPanel Spacing="14">
+          <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding StatusDetail}" Classes="muted" TextWrapping="Wrap" />
+          <Button Classes="primary" Content="OAuth-Datei auswählen …"
+                  HorizontalAlignment="Left" Click="ChooseCredentials_OnClick"
+                  IsEnabled="{Binding CanInteract}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" IsVisible="{Binding ShowConnectionAction}">
+        <StackPanel Spacing="14">
+          <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding StatusDetail}" Classes="muted" TextWrapping="Wrap" />
+          <Button Classes="primary" Content="{Binding ConnectionActionText}"
+                  HorizontalAlignment="Left" Command="{Binding ConnectCommand}"
+                  IsEnabled="{Binding CanInteract}" />
+        </StackPanel>
+      </Border>
+
+      <StackPanel IsVisible="{Binding IsConnected}" Spacing="16">
+        <Border Classes="card" Background="#ECFDF3" BorderBrush="#B7E4C7">
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+            <Border Width="34" Height="34" CornerRadius="17" Background="#16794A">
+              <TextBlock Text="✓" Foreground="White" FontSize="20" FontWeight="Bold"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <StackPanel Grid.Column="1" Spacing="3">
+              <TextBlock Text="{Binding StatusTitle}" FontSize="21" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding StatusDetail}" Classes="muted" />
+            </StackPanel>
+            <Button Grid.Column="2" Classes="primary" Content="Google-Konto hinzufügen"
+                    Command="{Binding AddAccountCommand}" IsEnabled="{Binding CanInteract}"
+                    VerticalAlignment="Center" />
+          </Grid>
+        </Border>
+
+        <ItemsControl ItemsSource="{Binding Accounts}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ConnectedAccountViewModel">
+              <Border Classes="card" Margin="0,0,0,12">
+                <StackPanel Spacing="18">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="3">
+                      <TextBlock Text="Google-Konto" FontSize="12" Classes="muted" />
+                      <TextBlock Text="{Binding Email}" FontSize="17" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="secondary" Content="Trennen"
+                            Tag="{Binding Key}" Click="DisconnectAccount_OnClick" />
+                  </Grid>
+
+                  <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+                    <Border Background="#F8FAFC" BorderBrush="#E2E5EA" BorderThickness="1"
+                            CornerRadius="10" Padding="16">
+                      <StackPanel Spacing="10">
+                        <TextBlock Text="Kalender" FontSize="16" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{Binding Calendars}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ConnectedResourceViewModel">
+                              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="0,3">
+                                <TextBlock Text="•" Foreground="#16794A" />
+                                <TextBlock Grid.Column="1" Text="{Binding Name}" TextWrapping="Wrap" />
+                                <Border Grid.Column="2" IsVisible="{Binding IsDefault}"
+                                        Background="#E7F6ED" CornerRadius="8" Padding="7,2">
+                                  <TextBlock Text="Standard" FontSize="11" Foreground="#16794A" />
+                                </Border>
+                              </Grid>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Background="#F8FAFC" BorderBrush="#E2E5EA"
+                            BorderThickness="1" CornerRadius="10" Padding="16">
+                      <StackPanel Spacing="10">
+                        <TextBlock Text="Aufgabenlisten" FontSize="16" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{Binding TaskLists}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ConnectedResourceViewModel">
+                              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="0,3">
+                                <TextBlock Text="•" Foreground="#16794A" />
+                                <TextBlock Grid.Column="1" Text="{Binding Name}" TextWrapping="Wrap" />
+                                <Border Grid.Column="2" IsVisible="{Binding IsDefault}"
+                                        Background="#E7F6ED" CornerRadius="8" Padding="7,2">
+                                  <TextBlock Text="Standard" FontSize="11" Foreground="#16794A" />
+                                </Border>
+                              </Grid>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Border IsVisible="{Binding IsDisconnectConfirmationVisible}"
+                Background="#FFF7ED" BorderBrush="#FED7AA" BorderThickness="1"
+                CornerRadius="10" Padding="16">
+          <StackPanel Spacing="12">
+            <TextBlock Text="{Binding DisconnectAccountEmail, StringFormat='{}{0} wirklich trennen?'}"
+                       FontWeight="SemiBold" TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Button Content="Abbrechen" Command="{Binding CancelDisconnectCommand}" />
+              <Button Content="Trennen" Command="{Binding ConfirmDisconnectCommand}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
+      <Border IsVisible="{Binding HasFeedback}" Background="#FFF7ED"
+              BorderBrush="#FED7AA" BorderThickness="1" CornerRadius="10" Padding="14">
+        <TextBlock Text="{Binding Feedback}" TextWrapping="Wrap" />
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</Window>
