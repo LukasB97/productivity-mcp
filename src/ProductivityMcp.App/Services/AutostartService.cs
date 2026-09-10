@@ -1,6 +1,6 @@
+using System.Runtime.Versioning;
 using System.Security;
 using System.Text;
-using System.Runtime.Versioning;
 using Microsoft.Win32;
 
 namespace ProductivityMcp.App.Services;

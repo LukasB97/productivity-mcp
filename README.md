@@ -1,8 +1,19 @@
 # Productivity MCP
 
-A small local MCP server for Google Calendar and Google Tasks, built with C# and .NET 10. An Avalonia desktop app manages the local Google connection on Windows, macOS, and Linux.
+Productivity MCP is a local Model Context Protocol server that gives MCP clients structured access to Google Calendar and Google Tasks. A small Avalonia desktop app handles OAuth setup, connected accounts, tray status, and optional autostart on Windows, macOS, and Linux.
 
-## Tools
+The project targets .NET 10. It is an early-stage personal tool: the tool contract is tested, but there are no versioned releases yet.
+
+## Features
+
+- Query, create, update, and delete Google Calendar events.
+- List, create, update, complete, and delete Google Tasks.
+- Connect more than one Google account and route direct provider ids to the right account.
+- Create or remove native Google Meet links on calendar events.
+- Return structured, machine-readable errors for validation, authentication, permissions, conflicts, rate limits, and provider outages.
+- Interpret all-day dates, fixed instants, and calendar-local times without silently guessing across daylight-saving transitions.
+
+## MCP tools
 
 ```text
 calendar.list()
@@ -19,47 +30,99 @@ tasks.complete({ taskId })
 tasks.delete({ taskId })
 ```
 
-List methods return direct Google provider ids together with human-readable names and provider metadata. Calendar entries also include their IANA `timeZone`. Google Tasks does not expose which task list is the default, so `isDefault` is `null` there.
+List methods return direct Google ids, display names, and provider metadata. Calendar entries also include their IANA `timeZone`. Google Tasks does not expose the default task list, so its `isDefault` value is `null`.
 
-Calendar event times accept `yyyy-MM-dd` for all-day events, RFC 3339 timestamps with an explicit offset for fixed instants, or local timestamps such as `2026-12-10T14:00:00`, which are interpreted in the selected calendar's default time zone. Google Tasks due dates are date-only and should be supplied as `yyyy-MM-dd`.
+Calendar event times accept an all-day date in `yyyy-MM-dd`, an RFC 3339 timestamp with an explicit offset, or a local timestamp such as `2026-12-10T14:00:00`. Local timestamps use the selected calendar's time zone. All-day end dates and query upper bounds are exclusive. Google Tasks due dates are date-only and use `yyyy-MM-dd`.
 
-Set `event.videoMeeting` to `true` to create the calendar provider's native video meeting. In an event patch, `true` creates it, `false` removes it, and omission leaves it unchanged. Unsupported providers return `unsupported` without creating or changing the event.
+Set `event.videoMeeting` to `true` when creating an event to request a native Google Meet link. In a patch, `true` creates a link, `false` removes it, and omission leaves it unchanged. Calendars without Google Meet support return an `unsupported` error without changing the event.
+
+## Prerequisites
+
+- The .NET 10 SDK selected by [`global.json`](global.json).
+- A Google Cloud project with the Google Calendar API and Google Tasks API enabled.
+- OAuth 2.0 credentials created as a Desktop app.
+- An MCP client that can launch a local stdio server.
+
+## Build and test
+
+```powershell
+dotnet restore --locked-mode
+dotnet build ProductivityMcp.sln -c Release --no-restore
+dotnet test ProductivityMcp.sln -c Release --no-build --no-restore
+dotnet format ProductivityMcp.sln --verify-no-changes --no-restore
+```
+
+The test suite uses fakes and temporary directories. It does not contact Google. CI runs the same build and tests on Windows, macOS, and Linux.
 
 ## Google setup
 
-1. Enable the Google Calendar API and Google Tasks API in a Google Cloud project.
-2. Create OAuth credentials for a desktop application.
-3. Download the credentials JSON to `%APPDATA%\ProductivityMcp\credentials.json`, or set `PRODUCTIVITY_MCP_GOOGLE_CREDENTIALS` to its path.
-4. Open the configuration app and connect one or more Google accounts. The browser-based OAuth flow stores separate refresh tokens under `%APPDATA%\ProductivityMcp\tokens` by default.
+1. In Google Cloud Console, enable the Google Calendar API and Google Tasks API.
+2. Configure the OAuth consent screen for the accounts that will use the server.
+3. Create an OAuth client with the Desktop app application type and download its JSON file.
+4. Start the configuration app with `dotnet run --project src/ProductivityMcp.App`.
+5. Select the downloaded JSON file, sign in through the browser, and grant the requested Calendar and Tasks scopes.
 
-Override the token directory with `PRODUCTIVITY_MCP_GOOGLE_TOKENS` and the account catalog with `PRODUCTIVITY_MCP_GOOGLE_ACCOUNTS`.
+The app can add multiple accounts, show their calendars and task lists, remove individual accounts after confirmation, and start itself with the operating system. Its current interface is German; provider and MCP errors are English.
 
-## Build and run
+By default, credentials, account metadata, and OAuth tokens live under the platform application-data directory in a `ProductivityMcp` folder. Override individual paths with:
 
-```powershell
-dotnet build ProductivityMcp.sln
-dotnet run --project src/ProductivityMcp.Server
-dotnet run --project src/ProductivityMcp.App
+| Variable | Purpose |
+| --- | --- |
+| `PRODUCTIVITY_MCP_GOOGLE_CREDENTIALS` | Google OAuth desktop-client JSON file |
+| `PRODUCTIVITY_MCP_GOOGLE_TOKENS` | Root directory for account token stores |
+| `PRODUCTIVITY_MCP_GOOGLE_ACCOUNTS` | Connected-account catalog JSON file |
+
+These files contain sensitive local data and must not be committed or shared. OAuth tokens currently use a file-based store rather than the operating-system keychain; see [Security](SECURITY.md) before redistributing the app.
+
+## Connect an MCP client
+
+Build the server first, then configure the MCP client to launch it over stdio. The exact settings file belongs to the client, but a typical entry looks like this:
+
+```json
+{
+  "mcpServers": {
+    "productivity": {
+      "command": "dotnet",
+      "args": [
+        "/absolute/path/to/productivity-mcp/src/ProductivityMcp.Server/bin/Release/net10.0/ProductivityMcp.Server.dll"
+      ]
+    }
+  }
+}
 ```
 
-The server uses stdio. Logs are written to stderr so stdout remains reserved for MCP messages.
+Use an absolute path and adapt path separators for the operating system. The server writes protocol messages to stdout and logs to stderr, so the client should keep both streams separate.
 
-## Configuration app
-
-The desktop app uses the same credential and token paths as the MCP server. It can:
-
-- validate and import Google OAuth desktop credentials;
-- add multiple Google accounts through the browser-based authorization flow;
-- display every connected account together with its calendars and task lists;
-- remove an individual account after confirmation.
-
-The app does not duplicate Calendar or Tasks features. MCP clients continue to start the background server directly and route operations across all connected accounts.
-
-Publish a small Windows x64 single-file build that requires .NET 10:
+For a portable folder instead of a development build:
 
 ```powershell
-dotnet publish src/ProductivityMcp.App -c Release -r win-x64 --self-contained false `
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish src/ProductivityMcp.Server -c Release -r win-x64 --self-contained true -o artifacts/server
+dotnet publish src/ProductivityMcp.App -c Release -r win-x64 --self-contained true -o artifacts/app
 ```
 
-For a build that does not require a separately installed .NET runtime, change `--self-contained` to `true`.
+Replace `win-x64` with the needed runtime identifier, such as `linux-x64` or `osx-arm64`. Framework-dependent publishing is also supported by setting `--self-contained false`.
+
+## Project structure
+
+```text
+src/ProductivityMcp.Core              Provider-neutral models and contracts
+src/ProductivityMcp.Providers.Google  Google OAuth and API adapters
+src/ProductivityMcp.Server            stdio MCP host and tool adapters
+src/ProductivityMcp.App               Avalonia setup and tray application
+tests/ProductivityMcp.Tests           Unit and contract tests
+```
+
+The detailed dependency boundaries, runtime flow, and tradeoffs are documented in [Architecture](docs/architecture.md).
+
+## Current limitations
+
+- Google Calendar and Google Tasks are the only providers.
+- Update and delete calls identify resources by direct provider id, so the server may search connected accounts to locate them.
+- The project has automated adapter and contract tests but no automated live-Google integration test.
+- OAuth tokens are stored in local files and depend on host filesystem permissions for protection.
+
+## Contributing and security
+
+See [Contributing](CONTRIBUTING.md) for the development workflow and project boundaries. Report vulnerabilities through the private process in [Security](SECURITY.md).
+
+Licensed under the [MIT License](LICENSE).

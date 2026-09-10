@@ -14,7 +14,7 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
         CancellationToken cancellationToken = default)
     {
         var providers = CalendarProviders();
-        if (providers.Count == 0) return NoAccounts<IReadOnlyList<CalendarInfo>>();
+        if (providers.Length == 0) return NoAccounts<IReadOnlyList<CalendarInfo>>();
 
         var calendars = new List<CalendarInfo>();
         foreach (var provider in providers)
@@ -46,7 +46,7 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
         }
 
         var providers = CalendarProviders();
-        if (providers.Count == 0) return NoAccounts<IReadOnlyList<CalendarEvent>>();
+        if (providers.Length == 0) return NoAccounts<IReadOnlyList<CalendarEvent>>();
 
         var events = new List<CalendarEvent>();
         foreach (var provider in providers)
@@ -96,7 +96,7 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
         CancellationToken cancellationToken = default)
     {
         var providers = TaskProviders();
-        if (providers.Count == 0) return NoAccounts<IReadOnlyList<TaskListInfo>>();
+        if (providers.Length == 0) return NoAccounts<IReadOnlyList<TaskListInfo>>();
 
         var taskLists = new List<TaskListInfo>();
         foreach (var provider in providers)
@@ -160,11 +160,11 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
             "task",
             taskId);
 
-    private IReadOnlyList<GoogleCalendarProvider> CalendarProviders() => _accounts.List()
+    private GoogleCalendarProvider[] CalendarProviders() => _accounts.List()
         .Select(account => new GoogleCalendarProvider(new GoogleServiceFactory(_accounts.OptionsFor(account.Key))))
         .ToArray();
 
-    private IReadOnlyList<GoogleTasksProvider> TaskProviders() => _accounts.List()
+    private GoogleTasksProvider[] TaskProviders() => _accounts.List()
         .Select(account => new GoogleTasksProvider(new GoogleServiceFactory(_accounts.OptionsFor(account.Key))))
         .ToArray();
 
@@ -208,7 +208,7 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
         string id)
     {
         var providers = CalendarProviders();
-        if (providers.Count == 0) return NoAccounts<T>();
+        if (providers.Length == 0) return NoAccounts<T>();
 
         foreach (var provider in providers)
         {
@@ -226,7 +226,7 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
         string id)
     {
         var providers = TaskProviders();
-        if (providers.Count == 0) return NoAccounts<T>();
+        if (providers.Length == 0) return NoAccounts<T>();
 
         foreach (var provider in providers)
         {

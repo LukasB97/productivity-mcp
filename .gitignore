@@ -1,10 +1,33 @@
-bin/
-obj/
+# .NET build and test output
+**/bin/
+**/obj/
 artifacts/
 TestResults/
+coverage/
+*.coverage
+*.coveragexml
+*.trx
+
+# IDE and operating-system files
 .vs/
 .idea/
+.vscode/
+*.suo
 *.user
+*.userosscache
+*.sln.docstates
+.DS_Store
+Thumbs.db
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
 credentials.json
+credentials.*.json
+client_secret*.json
 accounts.json
 tokens/
+*.pfx
+*.p12
+*.key

@@ -1,5 +1,5 @@
-using System.Net;
 using System.Globalization;
+using System.Net;
 using Google;
 using Google.Apis;
 using Google.Apis.Tasks.v1;
@@ -160,7 +160,7 @@ public sealed class GoogleTasksProvider(GoogleServiceFactory serviceFactory) : I
         return default;
     }
 
-    private async System.Threading.Tasks.Task<(string TaskListId, GoogleTask Task)> FindTaskAsync(
+    private static async System.Threading.Tasks.Task<(string TaskListId, GoogleTask Task)> FindTaskAsync(
         TasksService service,
         string taskId,
         CancellationToken cancellationToken)

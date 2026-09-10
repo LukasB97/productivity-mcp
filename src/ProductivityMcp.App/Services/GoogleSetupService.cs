@@ -100,7 +100,7 @@ public sealed class GoogleSetupService : IGoogleSetupService
         CancellationToken cancellationToken = default)
     {
         var existingAccounts = _accounts.List();
-        var accountKey = _accounts.CreateAccountKey();
+        var accountKey = GoogleAccountCatalog.CreateAccountKey();
         var keepAccount = false;
         try
         {

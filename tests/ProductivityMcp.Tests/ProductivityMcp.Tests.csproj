@@ -1,4 +1,4 @@
-<Project Sdk="MSTest.Sdk/4.3.3">
+<Project Sdk="MSTest.Sdk/4.4.0">
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ProductivityMcp.Core\ProductivityMcp.Core.csproj" />
@@ -11,6 +11,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
   </PropertyGroup>
 
 </Project>

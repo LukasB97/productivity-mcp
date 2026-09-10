@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Calendar.v3;
 using Google.Apis.Services;
@@ -6,6 +7,10 @@ using Google.Apis.Util.Store;
 
 namespace ProductivityMcp.Providers.Google;
 
+[SuppressMessage(
+    "Design",
+    "CA1001:Types that own disposable fields should be disposable",
+    Justification = "SemaphoreSlim does not create an OS wait handle unless AvailableWaitHandle is accessed.")]
 public sealed class GoogleServiceFactory
 {
     public const string TokenFileName = "Google.Apis.Auth.OAuth2.Responses.TokenResponse-user";

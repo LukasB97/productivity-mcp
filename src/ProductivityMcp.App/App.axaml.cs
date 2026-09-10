@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -9,6 +10,10 @@ using ProductivityMcp.Providers.Google;
 
 namespace ProductivityMcp.App;
 
+[SuppressMessage(
+    "Design",
+    "CA1001:Types that own disposable fields should be disposable",
+    Justification = "Avalonia owns the Application lifetime; ExitApplication disposes the tray icon.")]
 public sealed partial class App : Application
 {
     private IClassicDesktopStyleApplicationLifetime? _desktop;

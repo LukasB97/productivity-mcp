@@ -1,14 +1,14 @@
-using System.Net;
-using System.Globalization;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
+using System.Net;
 using Google;
 using Google.Apis;
 using Google.Apis.Calendar.v3;
 using Google.Apis.Calendar.v3.Data;
 using ProductivityMcp.Core;
 using DomainEvent = ProductivityMcp.Core.Event;
-using GoogleEvent = Google.Apis.Calendar.v3.Data.Event;
 using GoogleCalendar = Google.Apis.Calendar.v3.Data.Calendar;
+using GoogleEvent = Google.Apis.Calendar.v3.Data.Event;
 
 namespace ProductivityMcp.Providers.Google;
 
@@ -198,7 +198,7 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
         return default;
     }
 
-    private async System.Threading.Tasks.Task<(string CalendarId, GoogleEvent Event)> FindEventAsync(
+    private static async System.Threading.Tasks.Task<(string CalendarId, GoogleEvent Event)> FindEventAsync(
         CalendarService service,
         string eventId,
         CancellationToken cancellationToken)

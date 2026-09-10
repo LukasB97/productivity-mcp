@@ -7,6 +7,10 @@ public sealed record GoogleAccountRegistration(string Key, string Email);
 public sealed class GoogleAccountCatalog(GoogleOptions baseOptions)
 {
     public const string PrimaryAccountKey = "primary";
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        WriteIndented = true,
+    };
 
     public IReadOnlyList<GoogleAccountRegistration> List()
     {
@@ -24,7 +28,7 @@ public sealed class GoogleAccountCatalog(GoogleOptions baseOptions)
         TokenStorePath = TokenDirectory(accountKey),
     };
 
-    public string CreateAccountKey() => Guid.NewGuid().ToString("N");
+    public static string CreateAccountKey() => Guid.NewGuid().ToString("N");
 
     public void Upsert(GoogleAccountRegistration registration)
     {
@@ -51,7 +55,7 @@ public sealed class GoogleAccountCatalog(GoogleOptions baseOptions)
             ? Path.GetFullPath(baseOptions.TokenStorePath)
             : Path.Combine(Path.GetFullPath(baseOptions.TokenStorePath), "accounts", accountKey);
 
-    private IReadOnlyList<GoogleAccountRegistration> ReadStored()
+    private GoogleAccountRegistration[] ReadStored()
     {
         if (!File.Exists(baseOptions.AccountsPath))
         {
@@ -73,9 +77,6 @@ public sealed class GoogleAccountCatalog(GoogleOptions baseOptions)
     {
         var path = Path.GetFullPath(baseOptions.AccountsPath);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(registrations, new JsonSerializerOptions
-        {
-            WriteIndented = true,
-        }));
+        File.WriteAllText(path, JsonSerializer.Serialize(registrations, SerializerOptions));
     }
 }
