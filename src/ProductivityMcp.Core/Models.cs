@@ -27,6 +27,9 @@ public sealed record Event : IValidatableObject
     public string Location { get; init; } = null!;
     public IReadOnlyList<string> Attendees { get; init; } = null!;
 
+    [Description("Creates the calendar provider's native video meeting when true.")]
+    public bool VideoMeeting { get; init; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         if (string.IsNullOrWhiteSpace(Title))
@@ -67,6 +70,7 @@ public sealed record EventPatch : IValidatableObject
     private string? _description;
     private string? _location;
     private IReadOnlyList<string>? _attendees;
+    private bool _videoMeeting;
 
     public string Title { get; init; } = null!;
 
@@ -103,6 +107,17 @@ public sealed record EventPatch : IValidatableObject
         }
     }
 
+    [Description("True creates the provider's native video meeting; false removes it; omission leaves it unchanged.")]
+    public bool VideoMeeting
+    {
+        get => _videoMeeting;
+        init
+        {
+            _videoMeeting = value;
+            HasVideoMeeting = true;
+        }
+    }
+
     [System.Text.Json.Serialization.JsonIgnore]
     public bool HasDescription { get; private init; }
 
@@ -112,9 +127,13 @@ public sealed record EventPatch : IValidatableObject
     [System.Text.Json.Serialization.JsonIgnore]
     public bool HasAttendees { get; private init; }
 
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasVideoMeeting { get; private init; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        if (Title is null && Start is null && End is null && !HasDescription && !HasLocation && !HasAttendees)
+        if (Title is null && Start is null && End is null && !HasDescription && !HasLocation && !HasAttendees &&
+            !HasVideoMeeting)
         {
             yield return new ValidationResult("patch must contain at least one field.");
         }
@@ -148,7 +167,12 @@ public sealed record CalendarEvent(
     string End,
     string? Description,
     string? Location,
-    IReadOnlyList<string> Attendees);
+    IReadOnlyList<string> Attendees,
+    VideoMeetingInfo? VideoMeeting = null);
+
+public sealed record VideoMeetingInfo(
+    string Provider,
+    string JoinUrl);
 
 public sealed record TaskListInfo(
     string Id,

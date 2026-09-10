@@ -58,6 +58,9 @@
           <ProgressBar IsIndeterminate="True" Height="4" />
           <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" />
           <TextBlock Text="{Binding StatusDetail}" Classes="muted" TextWrapping="Wrap" />
+          <Button Classes="secondary" Content="Abbrechen"
+                  HorizontalAlignment="Left" Command="{Binding CancelConnectionCommand}"
+                  IsVisible="{Binding CanCancelConnection}" />
         </StackPanel>
       </Border>
 
@@ -178,6 +181,19 @@
       <Border IsVisible="{Binding HasFeedback}" Background="#FFF7ED"
               BorderBrush="#FED7AA" BorderThickness="1" CornerRadius="10" Padding="14">
         <TextBlock Text="{Binding Feedback}" TextWrapping="Wrap" />
+      </Border>
+
+      <Border Classes="card" IsVisible="{Binding IsAutostartSupported}">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
+          <StackPanel Spacing="4">
+            <TextBlock Text="App-Start" FontSize="16" FontWeight="SemiBold" />
+            <TextBlock Text="Productivity MCP beim Anmelden im Hintergrund starten."
+                       Classes="muted" TextWrapping="Wrap" />
+          </StackPanel>
+          <ToggleSwitch Grid.Column="1" IsChecked="{Binding StartWithSystem}"
+                        OnContent="An" OffContent="Aus"
+                        VerticalAlignment="Center" />
+        </Grid>
       </Border>
     </StackPanel>
   </ScrollViewer>

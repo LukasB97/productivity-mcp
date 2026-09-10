@@ -6,7 +6,23 @@ namespace ProductivityMcp.App.Views;
 
 public sealed partial class MainWindow : Window
 {
+    private bool _allowClose;
+
     public MainWindow() => InitializeComponent();
+
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        if (!_allowClose)
+        {
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+
+        base.OnClosing(e);
+    }
+
+    public void AllowClose() => _allowClose = true;
 
     private async void MainWindow_OnOpened(object? sender, EventArgs e)
     {

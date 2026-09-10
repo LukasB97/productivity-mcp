@@ -8,11 +8,16 @@ using Google.Apis.Calendar.v3.Data;
 using ProductivityMcp.Core;
 using DomainEvent = ProductivityMcp.Core.Event;
 using GoogleEvent = Google.Apis.Calendar.v3.Data.Event;
+using GoogleCalendar = Google.Apis.Calendar.v3.Data.Calendar;
 
 namespace ProductivityMcp.Providers.Google;
 
 public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) : ICalendarProvider
 {
+    private const string GoogleMeetConferenceType = "hangoutsMeet";
+
+    public CalendarProviderCapabilities Capabilities { get; } = new(NativeVideoMeetings: true);
+
     public System.Threading.Tasks.Task<OperationResult<IReadOnlyList<CalendarInfo>>> ListAsync(
         CancellationToken cancellationToken = default) =>
         GoogleOperation.ExecuteAsync(() => ListCoreAsync(cancellationToken));
@@ -20,7 +25,7 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
     private async System.Threading.Tasks.Task<IReadOnlyList<CalendarInfo>> ListCoreAsync(
         CancellationToken cancellationToken = default)
     {
-        using var service = await serviceFactory.CreateCalendarAsync().ConfigureAwait(false);
+        using var service = await serviceFactory.CreateCalendarAsync(cancellationToken).ConfigureAwait(false);
         return await ListCalendarsAsync(service, cancellationToken).ConfigureAwait(false);
     }
 
@@ -60,7 +65,7 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
         EventQuery query,
         CancellationToken cancellationToken = default)
     {
-        using var service = await serviceFactory.CreateCalendarAsync().ConfigureAwait(false);
+        using var service = await serviceFactory.CreateCalendarAsync(cancellationToken).ConfigureAwait(false);
         var calendars = query.CalendarId is not null
             ? new[]
             {
@@ -121,10 +126,21 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
         DomainEvent @event,
         CancellationToken cancellationToken = default)
     {
-        using var service = await serviceFactory.CreateCalendarAsync().ConfigureAwait(false);
-        var calendarTimeZone = await GetCalendarTimeZoneAsync(service, calendarId, cancellationToken).ConfigureAwait(false);
+        using var service = await serviceFactory.CreateCalendarAsync(cancellationToken).ConfigureAwait(false);
+        var calendar = await GetCalendarAsync(service, calendarId, cancellationToken).ConfigureAwait(false);
+        var calendarTimeZone = GetCalendarTimeZone(calendar);
+        if (@event.VideoMeeting)
+        {
+            EnsureVideoMeetingSupported(calendar, "event.videoMeeting");
+        }
+
         var request = service.Events.Insert(ToGoogleEvent(@event, calendarTimeZone), calendarId);
         request.SendUpdates = EventsResource.InsertRequest.SendUpdatesEnum.All;
+        if (@event.VideoMeeting)
+        {
+            request.ConferenceDataVersion = 1;
+        }
+
         var created = await request.ExecuteAsync(cancellationToken)
             .ConfigureAwait(false);
         return MapEvent(calendarId, created);
@@ -141,14 +157,25 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
         EventPatch patch,
         CancellationToken cancellationToken = default)
     {
-        using var service = await serviceFactory.CreateCalendarAsync().ConfigureAwait(false);
+        using var service = await serviceFactory.CreateCalendarAsync(cancellationToken).ConfigureAwait(false);
         var located = await FindEventAsync(service, eventId, cancellationToken).ConfigureAwait(false);
-        var calendarTimeZone = await GetCalendarTimeZoneAsync(service, located.CalendarId, cancellationToken).ConfigureAwait(false);
+        var calendar = await GetCalendarAsync(service, located.CalendarId, cancellationToken).ConfigureAwait(false);
+        var calendarTimeZone = GetCalendarTimeZone(calendar);
+        if (patch.HasVideoMeeting && patch.VideoMeeting)
+        {
+            EnsureVideoMeetingSupported(calendar, "patch.videoMeeting");
+        }
+
         ApplyPatch(located.Event, patch, calendarTimeZone);
         ValidateEventRange(located.Event.Start, located.Event.End, calendarTimeZone);
         var request = service.Events.Update(located.Event, located.CalendarId, eventId);
         request.ETagAction = ETagAction.IfMatch;
         request.SendUpdates = EventsResource.UpdateRequest.SendUpdatesEnum.All;
+        if (patch.HasVideoMeeting)
+        {
+            request.ConferenceDataVersion = 1;
+        }
+
         var updated = await request.ExecuteAsync(cancellationToken).ConfigureAwait(false);
         return MapEvent(located.CalendarId, updated);
     }
@@ -162,7 +189,7 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
         string eventId,
         CancellationToken cancellationToken = default)
     {
-        using var service = await serviceFactory.CreateCalendarAsync().ConfigureAwait(false);
+        using var service = await serviceFactory.CreateCalendarAsync(cancellationToken).ConfigureAwait(false);
         var located = await FindEventAsync(service, eventId, cancellationToken).ConfigureAwait(false);
         var request = service.Events.Delete(located.CalendarId, eventId);
         request.SendUpdates = EventsResource.DeleteRequest.SendUpdatesEnum.All;
@@ -203,7 +230,7 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
         return found ?? throw new KeyNotFoundException($"Event '{eventId}' was not found.");
     }
 
-    private static GoogleEvent ToGoogleEvent(DomainEvent source, string calendarTimeZone)
+    internal static GoogleEvent ToGoogleEvent(DomainEvent source, string calendarTimeZone)
     {
         var start = GoogleTemporal.Parse(source.Start, nameof(source.Start));
         var end = GoogleTemporal.Parse(source.End, nameof(source.End));
@@ -217,10 +244,11 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
             Description = source.Description,
             Location = source.Location,
             Attendees = source.Attendees?.Select(email => new EventAttendee { Email = email }).ToList(),
+            ConferenceData = source.VideoMeeting ? CreateGoogleMeetConferenceData() : null,
         };
     }
 
-    private static void ApplyPatch(GoogleEvent target, EventPatch patch, string calendarTimeZone)
+    internal static void ApplyPatch(GoogleEvent target, EventPatch patch, string calendarTimeZone)
     {
         if (patch.Title is not null) target.Summary = patch.Title;
         if (patch.Start is not null)
@@ -241,6 +269,36 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
         {
             target.Attendees = MergeAttendees(target.Attendees, patch.Attendees);
         }
+        if (patch.HasVideoMeeting)
+        {
+            target.ConferenceData = patch.VideoMeeting ? CreateGoogleMeetConferenceData() : null;
+        }
+    }
+
+    internal static ConferenceData CreateGoogleMeetConferenceData() => new()
+    {
+        CreateRequest = new CreateConferenceRequest
+        {
+            RequestId = Guid.NewGuid().ToString("N"),
+            ConferenceSolutionKey = new ConferenceSolutionKey
+            {
+                Type = GoogleMeetConferenceType,
+            },
+        },
+    };
+
+    internal static void EnsureVideoMeetingSupported(GoogleCalendar calendar, string field)
+    {
+        if (calendar.ConferenceProperties?.AllowedConferenceSolutionTypes?.Contains(
+                GoogleMeetConferenceType,
+                StringComparer.Ordinal) is true)
+        {
+            return;
+        }
+
+        throw new UnsupportedFeatureException(
+            "The selected calendar does not support provider-native video meetings.",
+            field);
     }
 
     internal static IList<EventAttendee> MergeAttendees(
@@ -269,12 +327,20 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
         string calendarId,
         CancellationToken cancellationToken)
     {
-        var calendar = await service.Calendars.Get(calendarId)
+        var calendar = await GetCalendarAsync(service, calendarId, cancellationToken).ConfigureAwait(false);
+        return GetCalendarTimeZone(calendar);
+    }
+
+    private static async System.Threading.Tasks.Task<GoogleCalendar> GetCalendarAsync(
+        CalendarService service,
+        string calendarId,
+        CancellationToken cancellationToken) =>
+        await service.Calendars.Get(calendarId)
             .ExecuteAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        return string.IsNullOrWhiteSpace(calendar.TimeZone) ? "UTC" : calendar.TimeZone;
-    }
+    private static string GetCalendarTimeZone(GoogleCalendar calendar) =>
+        string.IsNullOrWhiteSpace(calendar.TimeZone) ? "UTC" : calendar.TimeZone;
 
     private static DateTimeOffset? ParseOptionalBound(string? value, string field, string calendarTimeZone) =>
         value is null
@@ -305,7 +371,7 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
         }
     }
 
-    private static CalendarEvent MapEvent(string calendarId, GoogleEvent source) => new(
+    internal static CalendarEvent MapEvent(string calendarId, GoogleEvent source) => new(
         source.Id,
         calendarId,
         source.Summary ?? "",
@@ -313,6 +379,29 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
         GoogleTemporal.FormatProviderValue(source.End),
         source.Description,
         source.Location,
-        source.Attendees?.Where(item => item.Email is not null).Select(item => item.Email).ToArray() ?? []);
+        source.Attendees?.Where(item => item.Email is not null).Select(item => item.Email).ToArray() ?? [],
+        MapVideoMeeting(source));
+
+    private static VideoMeetingInfo? MapVideoMeeting(GoogleEvent source)
+    {
+        var joinUrl = source.ConferenceData?.EntryPoints?
+                          .FirstOrDefault(entry =>
+                              string.Equals(entry.EntryPointType, "video", StringComparison.Ordinal) &&
+                              !string.IsNullOrWhiteSpace(entry.Uri))
+                          ?.Uri
+                      ?? source.HangoutLink;
+        if (string.IsNullOrWhiteSpace(joinUrl))
+        {
+            return null;
+        }
+
+        var provider = string.Equals(
+            source.ConferenceData?.ConferenceSolution?.Key?.Type,
+            GoogleMeetConferenceType,
+            StringComparison.Ordinal)
+            ? "googleMeet"
+            : "google";
+        return new VideoMeetingInfo(provider, joinUrl);
+    }
 
 }

@@ -1,7 +1,11 @@
 namespace ProductivityMcp.Core;
 
+public sealed record CalendarProviderCapabilities(bool NativeVideoMeetings);
+
 public interface ICalendarProvider
 {
+    CalendarProviderCapabilities Capabilities { get; }
+
     System.Threading.Tasks.Task<OperationResult<IReadOnlyList<CalendarInfo>>> ListAsync(CancellationToken cancellationToken = default);
     System.Threading.Tasks.Task<OperationResult<IReadOnlyList<CalendarEvent>>> QueryEventsAsync(EventQuery query, CancellationToken cancellationToken = default);
     System.Threading.Tasks.Task<OperationResult<CalendarEvent>> CreateEventAsync(string calendarId, Event @event, CancellationToken cancellationToken = default);

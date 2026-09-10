@@ -17,17 +17,18 @@ public sealed class GoogleServiceFactory
     ];
 
     private readonly GoogleOptions _options;
-    private readonly Lazy<System.Threading.Tasks.Task<UserCredential>> _credential;
+    private readonly SemaphoreSlim _credentialLock = new(1, 1);
+    private UserCredential? _credential;
 
     public GoogleServiceFactory(GoogleOptions options)
     {
         _options = options;
-        _credential = new Lazy<System.Threading.Tasks.Task<UserCredential>>(AuthorizeAsync);
     }
 
-    public async System.Threading.Tasks.Task<CalendarService> CreateCalendarAsync()
+    public async System.Threading.Tasks.Task<CalendarService> CreateCalendarAsync(
+        CancellationToken cancellationToken = default)
     {
-        var credential = await _credential.Value.ConfigureAwait(false);
+        var credential = await GetCredentialAsync(cancellationToken).ConfigureAwait(false);
         return new CalendarService(new BaseClientService.Initializer
         {
             HttpClientInitializer = credential,
@@ -35,9 +36,10 @@ public sealed class GoogleServiceFactory
         });
     }
 
-    public async System.Threading.Tasks.Task<TasksService> CreateTasksAsync()
+    public async System.Threading.Tasks.Task<TasksService> CreateTasksAsync(
+        CancellationToken cancellationToken = default)
     {
-        var credential = await _credential.Value.ConfigureAwait(false);
+        var credential = await GetCredentialAsync(cancellationToken).ConfigureAwait(false);
         return new TasksService(new BaseClientService.Initializer
         {
             HttpClientInitializer = credential,
@@ -45,7 +47,28 @@ public sealed class GoogleServiceFactory
         });
     }
 
-    private async System.Threading.Tasks.Task<UserCredential> AuthorizeAsync()
+    private async System.Threading.Tasks.Task<UserCredential> GetCredentialAsync(
+        CancellationToken cancellationToken)
+    {
+        if (_credential is not null)
+        {
+            return _credential;
+        }
+
+        await _credentialLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _credential ??= await AuthorizeAsync(cancellationToken).ConfigureAwait(false);
+            return _credential;
+        }
+        finally
+        {
+            _credentialLock.Release();
+        }
+    }
+
+    private async System.Threading.Tasks.Task<UserCredential> AuthorizeAsync(
+        CancellationToken cancellationToken)
     {
         if (!File.Exists(_options.CredentialsPath))
         {
@@ -57,13 +80,13 @@ public sealed class GoogleServiceFactory
         Directory.CreateDirectory(_options.TokenStorePath);
         var secrets = (await GoogleClientSecrets.FromFileAsync(
             _options.CredentialsPath,
-            CancellationToken.None).ConfigureAwait(false)).Secrets;
+            cancellationToken).ConfigureAwait(false)).Secrets;
 
         return await GoogleWebAuthorizationBroker.AuthorizeAsync(
             secrets,
             Scopes,
             "user",
-            CancellationToken.None,
+            cancellationToken,
             new FileDataStore(_options.TokenStorePath, true)).ConfigureAwait(false);
     }
 }

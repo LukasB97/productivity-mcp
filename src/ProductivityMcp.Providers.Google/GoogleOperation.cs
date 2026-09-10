@@ -36,6 +36,10 @@ internal static class GoogleOperation
         ValidationException validation => new OperationError(
             OperationErrorCode.Validation,
             validation.Message),
+        UnsupportedFeatureException unsupported => new OperationError(
+            OperationErrorCode.Unsupported,
+            unsupported.Message,
+            unsupported.Field),
         KeyNotFoundException notFound => new OperationError(
             OperationErrorCode.NotFound,
             notFound.Message),

@@ -111,13 +111,77 @@ public sealed class ConfigurationAppTests
         Assert.AreEqual("2 Google-Konten verbunden", viewModel.StatusTitle);
     }
 
+    [TestMethod]
+    public void ViewModel_AutostartSettingUpdatesOperatingSystemService()
+    {
+        var autostart = new FakeAutostartService(enabled: false);
+        var viewModel = new MainWindowViewModel(new FakeSetupService(), autostart);
+
+        Assert.IsFalse(viewModel.StartWithSystem);
+
+        viewModel.StartWithSystem = true;
+
+        Assert.IsTrue(autostart.Enabled);
+        Assert.AreEqual(1, autostart.SetCalls);
+    }
+
+    [TestMethod]
+    public async System.Threading.Tasks.Task ViewModel_CancelAddAccountRestoresConnectedState()
+    {
+        var service = new FakeSetupService(connected: true, blockAddAccount: true);
+        var viewModel = new MainWindowViewModel(service);
+        await viewModel.InitializeAsync();
+
+        var addAccount = viewModel.AddAccountCommand.ExecuteAsync(null);
+        await service.AddAccountStarted;
+
+        Assert.IsTrue(viewModel.IsBusy);
+        Assert.IsTrue(viewModel.CanCancelConnection);
+        viewModel.CancelConnectionCommand.Execute(null);
+        await addAccount;
+
+        Assert.IsFalse(viewModel.IsBusy);
+        Assert.IsFalse(viewModel.CanCancelConnection);
+        Assert.IsTrue(viewModel.IsConnected);
+        Assert.HasCount(1, viewModel.Accounts);
+        Assert.AreEqual("person@example.com", viewModel.Accounts[0].Email);
+        Assert.AreEqual("Google-Anmeldung wurde abgebrochen.", viewModel.Feedback);
+        Assert.IsFalse(viewModel.IsFeedbackError);
+    }
+
+    private sealed class FakeAutostartService(bool enabled) : IAutostartService
+    {
+        public bool Enabled { get; private set; } = enabled;
+
+        public int SetCalls { get; private set; }
+
+        public bool IsSupported => true;
+
+        public bool IsEnabled() => Enabled;
+
+        public void SetEnabled(bool enabledValue)
+        {
+            Enabled = enabledValue;
+            SetCalls++;
+        }
+    }
+
     private sealed class FakeSetupService : IGoogleSetupService
     {
         private bool _connected;
+        private readonly bool _blockAddAccount;
+        private readonly TaskCompletionSource _addAccountStarted = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public FakeSetupService(bool connected = false) => _connected = connected;
+        public FakeSetupService(bool connected = false, bool blockAddAccount = false)
+        {
+            _connected = connected;
+            _blockAddAccount = blockAddAccount;
+        }
 
         public int ConnectCalls { get; private set; }
+
+        public System.Threading.Tasks.Task AddAccountStarted => _addAccountStarted.Task;
 
         public SetupSnapshot Inspect() => new(
             "C:\\test",
@@ -138,12 +202,17 @@ public sealed class ConfigurationAppTests
                 OperationResult.Ok(Summary()));
         }
 
-        public System.Threading.Tasks.Task<OperationResult<ConnectionSummary>> AddAccountAsync(
+        public async System.Threading.Tasks.Task<OperationResult<ConnectionSummary>> AddAccountAsync(
             CancellationToken cancellationToken = default)
         {
+            if (_blockAddAccount)
+            {
+                _addAccountStarted.TrySetResult();
+                await System.Threading.Tasks.Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
             _connected = true;
-            return System.Threading.Tasks.Task.FromResult<OperationResult<ConnectionSummary>>(
-                OperationResult.Ok(Summary(includeSecondAccount: true)));
+            return OperationResult.Ok(Summary(includeSecondAccount: true));
         }
 
         public OperationResult<SetupSnapshot> Disconnect(string accountKey)

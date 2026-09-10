@@ -17,8 +17,11 @@ public sealed record ConnectedAccountViewModel(
 public sealed partial class MainWindowViewModel : ObservableObject
 {
     private readonly IGoogleSetupService _setupService;
+    private readonly IAutostartService _autostartService;
     private bool _initialized;
+    private bool _updatingAutostart;
     private string? _disconnectAccountKey;
+    private CancellationTokenSource? _connectionCancellation;
 
     [ObservableProperty]
     private string _statusTitle = "Google einrichten";
@@ -51,6 +54,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool _canInteract = true;
 
     [ObservableProperty]
+    private bool _canCancelConnection;
+
+    [ObservableProperty]
     private bool _needsCredentials;
 
     [ObservableProperty]
@@ -62,10 +68,41 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private string _disconnectAccountEmail = "";
 
-    public MainWindowViewModel(IGoogleSetupService setupService)
+    [ObservableProperty]
+    private bool _isAutostartSupported;
+
+    [ObservableProperty]
+    private bool _startWithSystem;
+
+    public MainWindowViewModel(
+        IGoogleSetupService setupService,
+        IAutostartService? autostartService = null)
     {
         _setupService = setupService;
+        _autostartService = autostartService ?? UnsupportedAutostartService.Instance;
+        _isAutostartSupported = _autostartService.IsSupported;
+        _startWithSystem = _isAutostartSupported && _autostartService.IsEnabled();
         ApplyLocalState(_setupService.Inspect());
+    }
+
+    partial void OnStartWithSystemChanged(bool value)
+    {
+        if (_updatingAutostart || !IsAutostartSupported)
+        {
+            return;
+        }
+
+        try
+        {
+            _autostartService.SetEnabled(value);
+        }
+        catch (Exception exception)
+        {
+            _updatingAutostart = true;
+            StartWithSystem = !value;
+            _updatingAutostart = false;
+            ShowError($"Autostart konnte nicht geändert werden: {exception.Message}");
+        }
     }
 
     public async AsyncTask InitializeAsync()
@@ -118,7 +155,21 @@ public sealed partial class MainWindowViewModel : ObservableObject
         await RunConnectionAsync(
             "Google-Konto hinzufügen …",
             "Wähle im Browser das zusätzliche Google-Konto aus.",
-            () => _setupService.AddAccountAsync());
+            cancellationToken => _setupService.AddAccountAsync(cancellationToken));
+    }
+
+    [RelayCommand]
+    private void CancelConnection()
+    {
+        if (!CanCancelConnection || _connectionCancellation is null)
+        {
+            return;
+        }
+
+        CanCancelConnection = false;
+        StatusTitle = "Google-Anmeldung wird abgebrochen …";
+        StatusDetail = "Der aktuelle Anmeldeversuch wird beendet.";
+        _connectionCancellation.Cancel();
     }
 
     public void RequestDisconnect(string accountKey)
@@ -176,19 +227,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
         showBrowserMessage
             ? "Falls nötig, öffnet sich gleich die Google-Anmeldung im Browser."
             : "Konten, Kalender und Aufgabenlisten werden kurz geprüft.",
-        () => _setupService.ConnectAsync());
+        cancellationToken => _setupService.ConnectAsync(cancellationToken));
 
     private async AsyncTask RunConnectionAsync(
         string busyTitle,
         string busyDetail,
-        Func<System.Threading.Tasks.Task<OperationResult<ConnectionSummary>>> action)
+        Func<CancellationToken, System.Threading.Tasks.Task<OperationResult<ConnectionSummary>>> action)
     {
         if (!CanInteract)
         {
             return;
         }
 
+        var previousState = CaptureUiState();
+        using var cancellation = new CancellationTokenSource();
+        _connectionCancellation = cancellation;
+
         CanInteract = false;
+        CanCancelConnection = true;
         IsBusy = true;
         ShowConnectionAction = false;
         NeedsCredentials = false;
@@ -198,7 +254,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         try
         {
-            var result = await action();
+            var result = await action(cancellation.Token);
+            CanCancelConnection = false;
             switch (result)
             {
                 case OperationResult<ConnectionSummary>.Success success:
@@ -209,11 +266,50 @@ public sealed partial class MainWindowViewModel : ObservableObject
                     break;
             }
         }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            RestoreUiState(previousState);
+            HasFeedback = true;
+            IsFeedbackError = false;
+            Feedback = "Google-Anmeldung wurde abgebrochen.";
+        }
         finally
         {
+            if (ReferenceEquals(_connectionCancellation, cancellation))
+            {
+                _connectionCancellation = null;
+            }
+
+            CanCancelConnection = false;
             IsBusy = false;
             CanInteract = true;
         }
+    }
+
+    private UiState CaptureUiState() => new(
+        Accounts,
+        StatusTitle,
+        StatusDetail,
+        ConnectionActionText,
+        IsConnected,
+        NeedsCredentials,
+        ShowConnectionAction,
+        HasFeedback,
+        IsFeedbackError,
+        Feedback);
+
+    private void RestoreUiState(UiState state)
+    {
+        Accounts = state.Accounts;
+        StatusTitle = state.StatusTitle;
+        StatusDetail = state.StatusDetail;
+        ConnectionActionText = state.ConnectionActionText;
+        IsConnected = state.IsConnected;
+        NeedsCredentials = state.NeedsCredentials;
+        ShowConnectionAction = state.ShowConnectionAction;
+        HasFeedback = state.HasFeedback;
+        IsFeedbackError = state.IsFeedbackError;
+        Feedback = state.Feedback;
     }
 
     private void ApplyLocalState(SetupSnapshot snapshot)
@@ -283,4 +379,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsFeedbackError = true;
         Feedback = message;
     }
+
+    private sealed record UiState(
+        IReadOnlyList<ConnectedAccountViewModel> Accounts,
+        string StatusTitle,
+        string StatusDetail,
+        string ConnectionActionText,
+        bool IsConnected,
+        bool NeedsCredentials,
+        bool ShowConnectionAction,
+        bool HasFeedback,
+        bool IsFeedbackError,
+        string Feedback);
 }

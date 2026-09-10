@@ -18,7 +18,7 @@ public sealed class GoogleTasksProvider(GoogleServiceFactory serviceFactory) : I
     private async System.Threading.Tasks.Task<IReadOnlyList<TaskListInfo>> ListTaskListsCoreAsync(
         CancellationToken cancellationToken = default)
     {
-        using var service = await serviceFactory.CreateTasksAsync().ConfigureAwait(false);
+        using var service = await serviceFactory.CreateTasksAsync(cancellationToken).ConfigureAwait(false);
         return await ListTaskListsWithServiceAsync(service, cancellationToken).ConfigureAwait(false);
     }
 
@@ -57,7 +57,7 @@ public sealed class GoogleTasksProvider(GoogleServiceFactory serviceFactory) : I
         string taskListId,
         CancellationToken cancellationToken = default)
     {
-        using var service = await serviceFactory.CreateTasksAsync().ConfigureAwait(false);
+        using var service = await serviceFactory.CreateTasksAsync(cancellationToken).ConfigureAwait(false);
         var result = new List<TodoTask>();
         string? pageToken = null;
 
@@ -87,7 +87,7 @@ public sealed class GoogleTasksProvider(GoogleServiceFactory serviceFactory) : I
         DomainTask task,
         CancellationToken cancellationToken = default)
     {
-        using var service = await serviceFactory.CreateTasksAsync().ConfigureAwait(false);
+        using var service = await serviceFactory.CreateTasksAsync(cancellationToken).ConfigureAwait(false);
         var created = await service.Tasks.Insert(new GoogleTask
         {
             Title = task.Title,
@@ -109,7 +109,7 @@ public sealed class GoogleTasksProvider(GoogleServiceFactory serviceFactory) : I
         TaskPatch patch,
         CancellationToken cancellationToken = default)
     {
-        using var service = await serviceFactory.CreateTasksAsync().ConfigureAwait(false);
+        using var service = await serviceFactory.CreateTasksAsync(cancellationToken).ConfigureAwait(false);
         var located = await FindTaskAsync(service, taskId, cancellationToken).ConfigureAwait(false);
         var body = located.Task;
 
@@ -132,7 +132,7 @@ public sealed class GoogleTasksProvider(GoogleServiceFactory serviceFactory) : I
         string taskId,
         CancellationToken cancellationToken = default)
     {
-        using var service = await serviceFactory.CreateTasksAsync().ConfigureAwait(false);
+        using var service = await serviceFactory.CreateTasksAsync(cancellationToken).ConfigureAwait(false);
         var located = await FindTaskAsync(service, taskId, cancellationToken).ConfigureAwait(false);
         var updated = await service.Tasks.Patch(
                 new GoogleTask { Status = "completed" },
@@ -152,7 +152,7 @@ public sealed class GoogleTasksProvider(GoogleServiceFactory serviceFactory) : I
         string taskId,
         CancellationToken cancellationToken = default)
     {
-        using var service = await serviceFactory.CreateTasksAsync().ConfigureAwait(false);
+        using var service = await serviceFactory.CreateTasksAsync(cancellationToken).ConfigureAwait(false);
         var located = await FindTaskAsync(service, taskId, cancellationToken).ConfigureAwait(false);
         await service.Tasks.Delete(located.TaskListId, taskId)
             .ExecuteAsync(cancellationToken)

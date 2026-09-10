@@ -31,6 +31,16 @@ public enum OperationErrorCode
 
     [JsonStringEnumMemberName("provider_error")]
     Provider,
+
+    [JsonStringEnumMemberName("unsupported")]
+    Unsupported,
+}
+
+public sealed class UnsupportedFeatureException(
+    string message,
+    string? field = null) : Exception(message)
+{
+    public string? Field { get; } = field;
 }
 
 public sealed record OperationError(

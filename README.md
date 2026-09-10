@@ -23,6 +23,8 @@ List methods return direct Google provider ids together with human-readable name
 
 Calendar event times accept `yyyy-MM-dd` for all-day events, RFC 3339 timestamps with an explicit offset for fixed instants, or local timestamps such as `2026-12-10T14:00:00`, which are interpreted in the selected calendar's default time zone. Google Tasks due dates are date-only and should be supplied as `yyyy-MM-dd`.
 
+Set `event.videoMeeting` to `true` to create the calendar provider's native video meeting. In an event patch, `true` creates it, `false` removes it, and omission leaves it unchanged. Unsupported providers return `unsupported` without creating or changing the event.
+
 ## Google setup
 
 1. Enable the Google Calendar API and Google Tasks API in a Google Cloud project.

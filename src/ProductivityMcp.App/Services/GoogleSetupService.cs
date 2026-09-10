@@ -101,31 +101,35 @@ public sealed class GoogleSetupService : IGoogleSetupService
     {
         var existingAccounts = _accounts.List();
         var accountKey = _accounts.CreateAccountKey();
-        var added = await ConnectAccountAsync(accountKey, cancellationToken).ConfigureAwait(false);
-        if (added is OperationResult<AccountConnectionSummary>.Failure failure)
+        var keepAccount = false;
+        try
         {
-            return OperationResult.Fail<ConnectionSummary>(failure.Error);
-        }
-
-        var addedAccount = ((OperationResult<AccountConnectionSummary>.Success)added).Value;
-        if (existingAccounts.Any(item =>
-                string.Equals(item.Email, addedAccount.Email, StringComparison.OrdinalIgnoreCase)))
-        {
-            var tokenFile = Path.Combine(
-                _accounts.TokenDirectory(accountKey),
-                GoogleServiceFactory.TokenFileName);
-            if (File.Exists(tokenFile))
+            var added = await ConnectAccountAsync(accountKey, cancellationToken).ConfigureAwait(false);
+            if (added is OperationResult<AccountConnectionSummary>.Failure failure)
             {
-                File.Delete(tokenFile);
+                return OperationResult.Fail<ConnectionSummary>(failure.Error);
             }
 
-            _accounts.Remove(accountKey);
-            return OperationResult.Fail<ConnectionSummary>(new OperationError(
-                OperationErrorCode.Conflict,
-                $"{addedAccount.Email} ist bereits verbunden."));
-        }
+            var addedAccount = ((OperationResult<AccountConnectionSummary>.Success)added).Value;
+            if (existingAccounts.Any(item =>
+                    string.Equals(item.Email, addedAccount.Email, StringComparison.OrdinalIgnoreCase)))
+            {
+                return OperationResult.Fail<ConnectionSummary>(new OperationError(
+                    OperationErrorCode.Conflict,
+                    $"{addedAccount.Email} ist bereits verbunden."));
+            }
 
-        return await ConnectAsync(cancellationToken).ConfigureAwait(false);
+            var result = await ConnectAsync(cancellationToken).ConfigureAwait(false);
+            keepAccount = result is OperationResult<ConnectionSummary>.Success;
+            return result;
+        }
+        finally
+        {
+            if (!keepAccount)
+            {
+                CleanupPendingAccount(accountKey);
+            }
+        }
     }
 
     public OperationResult<SetupSnapshot> Disconnect(string accountKey)
@@ -195,4 +199,23 @@ public sealed class GoogleSetupService : IGoogleSetupService
             OperationErrorCode.Configuration,
             message,
             field));
+
+    private void CleanupPendingAccount(string accountKey)
+    {
+        _accounts.Remove(accountKey);
+        var tokenDirectory = _accounts.TokenDirectory(accountKey);
+        try
+        {
+            if (Directory.Exists(tokenDirectory))
+            {
+                Directory.Delete(tokenDirectory, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
 }

@@ -8,6 +8,8 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
 {
     private readonly GoogleAccountCatalog _accounts = new(options);
 
+    public CalendarProviderCapabilities Capabilities { get; } = new(NativeVideoMeetings: true);
+
     public async System.Threading.Tasks.Task<OperationResult<IReadOnlyList<CalendarInfo>>> ListAsync(
         CancellationToken cancellationToken = default)
     {

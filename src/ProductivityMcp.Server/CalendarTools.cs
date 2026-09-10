@@ -67,6 +67,11 @@ public sealed class CalendarTools(ICalendarProvider provider)
             return eventError;
         }
 
+        if (validatedEvent.VideoMeeting && !provider.Capabilities.NativeVideoMeetings)
+        {
+            return UnsupportedVideoMeeting("event.videoMeeting");
+        }
+
         return McpToolResults.FromValue(
             await provider.CreateEventAsync(validatedCalendarId, validatedEvent, cancellationToken)
                 .ConfigureAwait(false));
@@ -100,6 +105,11 @@ public sealed class CalendarTools(ICalendarProvider provider)
             return patchError;
         }
 
+        if (validatedPatch.HasVideoMeeting && !provider.Capabilities.NativeVideoMeetings)
+        {
+            return UnsupportedVideoMeeting("patch.videoMeeting");
+        }
+
         return McpToolResults.FromValue(
             await provider.UpdateEventAsync(validatedEventId, validatedPatch, cancellationToken)
                 .ConfigureAwait(false));
@@ -122,4 +132,10 @@ public sealed class CalendarTools(ICalendarProvider provider)
         return McpToolResults.FromUnit(
             await provider.DeleteEventAsync(validatedEventId, cancellationToken).ConfigureAwait(false));
     }
+
+    private static CallToolResult UnsupportedVideoMeeting(string field) => McpToolResults.Error(
+        new OperationError(
+            OperationErrorCode.Unsupported,
+            "The calendar provider does not support native video meetings.",
+            field));
 }
