@@ -62,4 +62,14 @@ public sealed partial class MainWindow : Window
             viewModel.RequestDisconnect(accountKey);
         }
     }
+
+    private async void EmailAccount_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: ConnectedAccountViewModel account } &&
+            DataContext is MainWindowViewModel viewModel)
+        {
+            if (account.EmailEnabled) await viewModel.DisableEmailAsync(account.Key);
+            else await viewModel.EnableEmailAsync(account.Key);
+        }
+    }
 }

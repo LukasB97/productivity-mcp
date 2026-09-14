@@ -51,6 +51,11 @@
         "resolved": "8.4.2",
         "contentHash": "WadCzGEc2U+3e20avRLng4qNtt4zoOGWrdUISqJWrHe3/FSnrYjuM5Sb4yQb09LhkBXrrI4Zt3dLKgRMbItsrg=="
       },
+      "AngleSharp": {
+        "type": "Transitive",
+        "resolved": "1.5.2",
+        "contentHash": "LVZ7rrr6GHbhERhTgVDarVygl1e6KwE96pronA90LBOMacDhxR4lB+xYLjn/vlnUu+xbOB2RM9fuCPEx5bdyWA=="
+      },
       "Avalonia.Angle.Windows.Natives": {
         "type": "Transitive",
         "resolved": "2.1.27548.20260419",
@@ -136,6 +141,11 @@
           "Avalonia.Skia": "12.1.2"
         }
       },
+      "BouncyCastle.Cryptography": {
+        "type": "Transitive",
+        "resolved": "2.7.0",
+        "contentHash": "U+12df8UEWHgBi04YVf/Lgi2dy3SItlIYvHjjEVa/BngCQIzDCDRBk50DDByCfDvSbe5pRNFr3b7UrVK2kMcLw=="
+      },
       "Google.Apis": {
         "type": "Transitive",
         "resolved": "1.75.0",
@@ -169,6 +179,15 @@
         "contentHash": "7AuI44XP4LzMFiOjdk4GCtCxJTIWZcjrXLeGjLYYSpTHHbiPkvm76XNym7zPOnD90sIg+zdTulg+I6D5W5spTQ==",
         "dependencies": {
           "Newtonsoft.Json": "13.0.4"
+        }
+      },
+      "Google.Apis.Gmail.v1": {
+        "type": "Transitive",
+        "resolved": "1.75.0.4225",
+        "contentHash": "aCJpQnalUcOVUBcG0UCteoPd4X+Ex4n9mGyY6zC0eVVIbfBPAePzCjLBjrxYyOVfdB5QV3ymtvorhfcf3SOsOQ==",
+        "dependencies": {
+          "Google.Apis": "1.75.0",
+          "Google.Apis.Auth": "1.75.0"
         }
       },
       "Google.Apis.Tasks.v1": {
@@ -209,15 +228,51 @@
         "resolved": "8.3.1.3",
         "contentHash": "bx8CE8Js+XGX8PUxAHCBDEORt5aaBYtMN4Hr9QFs57Xithh6yjUyYqksizH6eRDhJkwsGI+SXWmPmMm8lZC9Pw=="
       },
+      "Markdig": {
+        "type": "Transitive",
+        "resolved": "1.3.2",
+        "contentHash": "fZgOC/3CswUrndjDTac70aQpYdtxbW5+5bRumR7vzvI2HJbkmgKisB1c9oT+GA6v0jB/JDR9BLa9FiPzQmaK6A=="
+      },
       "MicroCom.Runtime": {
         "type": "Transitive",
         "resolved": "0.11.6",
         "contentHash": "NdNWGDiZ6eS/Mf/9+QHR91cj1K7Hy+PX9yrHI/zM7xFYuj9IWT2uxtB6sCHjrnxAeLV9fut1R6zHDUGKX6f9lQ=="
       },
+      "Microsoft.Bcl.AsyncInterfaces": {
+        "type": "Transitive",
+        "resolved": "6.0.0",
+        "contentHash": "UcSjPsst+DfAdJGVDsu346FX0ci0ah+lw3WRtn18NUwEqRt70HaOQ7lI72vy3+1LxtqI3T5GWwV39rQSrCzAeg=="
+      },
+      "Microsoft.Playwright": {
+        "type": "Transitive",
+        "resolved": "1.62.0",
+        "contentHash": "cos6dmHPcMpS6bXw2WEgoXb8KXwMhs3c5L0P/cUf2rdUpjVA3g3u+KiSpVp2VCzsXymRpy2tFHqm+Wnz7s5VhQ==",
+        "dependencies": {
+          "Microsoft.Bcl.AsyncInterfaces": "6.0.0",
+          "System.ComponentModel.Annotations": "5.0.0"
+        }
+      },
+      "MimeKit": {
+        "type": "Transitive",
+        "resolved": "4.18.0",
+        "contentHash": "foq2guy0YL0l0WuHrW4CuYicooXDpXlTOG1kuzlw9VcWfZpaf6zu3nX2kV3n6VKTrMy24vQJgE2TepszntVd3A==",
+        "dependencies": {
+          "BouncyCastle.Cryptography": "2.7.0",
+          "System.Security.Cryptography.Pkcs": "10.0.0"
+        }
+      },
       "Newtonsoft.Json": {
         "type": "Transitive",
         "resolved": "13.0.4",
         "contentHash": "pdgNNMai3zv51W5aq268sujXUyx7SNdE2bj1wZcWjAQrKMFZV260lbqYop1d2GM67JI1huLRwxo9ZqnfF/lC6A=="
+      },
+      "ReverseMarkdown": {
+        "type": "Transitive",
+        "resolved": "6.2.1",
+        "contentHash": "4ef2AoeNdBHrKoMU6t04dxTQ72TXsNO3RfWU1YN5jaJjCIrQhvNo9nhfO+6z+j7UBZNadsdN2d4rzAFO27xUnw==",
+        "dependencies": {
+          "AngleSharp": "1.5.2"
+        }
       },
       "SkiaSharp": {
         "type": "Transitive",
@@ -253,6 +308,11 @@
         "resolved": "7.0.0",
         "contentHash": "GLltyqEsE5/3IE+zYRP5sNa1l44qKl9v+bfdMcwg+M9qnQf47wK3H0SUR/T+3N4JEQXF3vV4CSuuo0rsg+nq2A=="
       },
+      "System.ComponentModel.Annotations": {
+        "type": "Transitive",
+        "resolved": "5.0.0",
+        "contentHash": "dMkqfy2el8A8/I76n2Hi1oBFEbG1SfxD2l5nhwXV3XjlnOmwxJlQbYpJH4W51odnU9sARCSAgv7S3CyAFMkpYg=="
+      },
       "System.Management": {
         "type": "Transitive",
         "resolved": "7.0.2",
@@ -260,6 +320,11 @@
         "dependencies": {
           "System.CodeDom": "7.0.0"
         }
+      },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "Transitive",
+        "resolved": "10.0.0",
+        "contentHash": "UPWqLSygJlFerRi9XNIuM0a1VC8gHUIufyP24xQ0sc+XimqUAEcjpOz9DhKpyDjH+5B/wO3RpC0KpkEeDj/ddg=="
       },
       "Tmds.DBus.Protocol": {
         "type": "Transitive",
@@ -269,12 +334,24 @@
       "productivitymcp.core": {
         "type": "Project"
       },
+      "productivitymcp.email": {
+        "type": "Project",
+        "dependencies": {
+          "Markdig": "[1.3.2, )",
+          "Microsoft.Playwright": "[1.62.0, )",
+          "MimeKit": "[4.18.0, )",
+          "ProductivityMcp.Core": "[1.0.0, )",
+          "ReverseMarkdown": "[6.2.1, )"
+        }
+      },
       "productivitymcp.providers.google": {
         "type": "Project",
         "dependencies": {
           "Google.Apis.Calendar.v3": "[1.75.0.4206, )",
+          "Google.Apis.Gmail.v1": "[1.75.0.4225, )",
           "Google.Apis.Tasks.v1": "[1.74.0.3958, )",
-          "ProductivityMcp.Core": "[1.0.0, )"
+          "ProductivityMcp.Core": "[1.0.0, )",
+          "ProductivityMcp.Email": "[1.0.0, )"
         }
       }
     }

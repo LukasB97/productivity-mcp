@@ -6,6 +6,7 @@ using Avalonia.Markup.Xaml;
 using ProductivityMcp.App.Services;
 using ProductivityMcp.App.ViewModels;
 using ProductivityMcp.App.Views;
+using ProductivityMcp.Email;
 using ProductivityMcp.Providers.Google;
 
 namespace ProductivityMcp.App;
@@ -34,7 +35,8 @@ public sealed partial class App : Application
             var options = GoogleOptions.FromEnvironment();
             var setupService = new GoogleSetupService(options);
             var autostartService = new AutostartService();
-            _viewModel = new MainWindowViewModel(setupService, autostartService);
+            var emailContent = new EmailContentService();
+            _viewModel = new MainWindowViewModel(setupService, autostartService, emailContent);
             _viewModel.PropertyChanged += (_, eventArgs) =>
             {
                 if (eventArgs.PropertyName is nameof(MainWindowViewModel.IsBusy)

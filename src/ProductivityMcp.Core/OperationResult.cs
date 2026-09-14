@@ -43,6 +43,14 @@ public sealed class UnsupportedFeatureException(
     public string? Field { get; } = field;
 }
 
+public sealed class ConfigurationException(
+    string message,
+    string? field = null,
+    Exception? innerException = null) : Exception(message, innerException)
+{
+    public string? Field { get; } = field;
+}
+
 public sealed record OperationError(
     OperationErrorCode Code,
     string Message,

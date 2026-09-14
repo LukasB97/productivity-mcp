@@ -49,6 +49,16 @@ internal static class McpToolResults
         _ => throw new InvalidOperationException("Unsupported operation result."),
     };
 
+    public static CallToolResult FromEmailMessages(OperationResult<IReadOnlyList<EmailMessageReadResult>> result) =>
+        WithImages(FromList(result), result is OperationResult<IReadOnlyList<EmailMessageReadResult>>.Success success
+            ? success.Value.Where(x => x.Message is not null).SelectMany(x =>
+                (x.Message!.Images ?? []).Select(image => ($"message:{x.Id}:page:{image.Page}", image))) : []);
+
+    public static CallToolResult FromEmailThreads(OperationResult<IReadOnlyList<EmailThreadReadResult>> result) =>
+        WithImages(FromList(result), result is OperationResult<IReadOnlyList<EmailThreadReadResult>>.Success success
+            ? success.Value.Where(x => x.Thread is not null).SelectMany(x => x.Thread!.Messages).SelectMany(message =>
+                (message.Images ?? []).Select(image => ($"message:{message.Id}:page:{image.Page}", image))) : []);
+
     public static CallToolResult Error(OperationError error) =>
         Create(new ErrorOutput(error), isError: true);
 
@@ -64,6 +74,16 @@ internal static class McpToolResults
     }
 
     private static CallToolResult Success<T>(T value) => Create(value, isError: false);
+
+    private static CallToolResult WithImages(CallToolResult result, IEnumerable<(string Label, EmailImage Image)> images)
+    {
+        foreach (var (label, image) in images)
+        {
+            result.Content.Add(new TextContentBlock { Text = label });
+            result.Content.Add(new ImageContentBlock { MimeType = image.MediaType, Data = image.Data });
+        }
+        return result;
+    }
 
     private static CallToolResult Create<T>(T value, bool isError)
     {

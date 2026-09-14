@@ -6,7 +6,7 @@ using ProductivityMcp.Core;
 
 namespace ProductivityMcp.Providers.Google;
 
-internal static class GoogleOperation
+public static class GoogleOperation
 {
     public static async System.Threading.Tasks.Task<OperationResult<T>> ExecuteAsync<T>(
         Func<System.Threading.Tasks.Task<T>> operation)
@@ -31,7 +31,7 @@ internal static class GoogleOperation
         }
     }
 
-    internal static OperationError? Translate(Exception exception) => exception switch
+    public static OperationError? Translate(Exception exception) => exception switch
     {
         ValidationException validation => new OperationError(
             OperationErrorCode.Validation,
@@ -40,12 +40,16 @@ internal static class GoogleOperation
             OperationErrorCode.Unsupported,
             unsupported.Message,
             unsupported.Field),
+        ConfigurationException configuration => new OperationError(
+            OperationErrorCode.Configuration,
+            configuration.Message,
+            configuration.Field),
         KeyNotFoundException notFound => new OperationError(
             OperationErrorCode.NotFound,
             notFound.Message),
-        FileNotFoundException => new OperationError(
+        FileNotFoundException missingFile => new OperationError(
             OperationErrorCode.Configuration,
-            "Google OAuth credentials are missing. Configure the credentials file before retrying."),
+            missingFile.Message),
         TokenResponseException => new OperationError(
             OperationErrorCode.Authentication,
             "Google authorization is invalid or expired. Sign in again before retrying."),

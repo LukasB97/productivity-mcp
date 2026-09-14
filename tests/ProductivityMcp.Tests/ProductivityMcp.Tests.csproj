@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ProductivityMcp.Core\ProductivityMcp.Core.csproj" />
+    <ProjectReference Include="..\..\src\ProductivityMcp.Email\ProductivityMcp.Email.csproj" />
     <ProjectReference Include="..\..\src\ProductivityMcp.Providers.Google\ProductivityMcp.Providers.Google.csproj" />
     <ProjectReference Include="..\..\src\ProductivityMcp.Server\ProductivityMcp.Server.csproj" />
     <ProjectReference Include="..\..\src\ProductivityMcp.App\ProductivityMcp.App.csproj" />

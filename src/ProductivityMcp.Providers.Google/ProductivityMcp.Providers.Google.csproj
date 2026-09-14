@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ProductivityMcp.Core\ProductivityMcp.Core.csproj" />
+    <ProjectReference Include="..\ProductivityMcp.Email\ProductivityMcp.Email.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -10,6 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="Google.Apis.Calendar.v3" Version="1.75.0.4206" />
+    <PackageReference Include="Google.Apis.Gmail.v1" Version="1.75.0.4225" />
     <PackageReference Include="Google.Apis.Tasks.v1" Version="1.74.0.3958" />
   </ItemGroup>
 
