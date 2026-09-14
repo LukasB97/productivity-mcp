@@ -85,7 +85,7 @@ public static class GoogleOperation
                 "Google denied permission for this operation."),
             HttpStatusCode.NotFound => new OperationError(
                 OperationErrorCode.NotFound,
-                "The requested calendar or task resource was not found."),
+                "The requested Google resource was not found."),
             HttpStatusCode.Conflict or HttpStatusCode.PreconditionFailed => new OperationError(
                 OperationErrorCode.Conflict,
                 "The resource was modified concurrently; retry with fresh data.",

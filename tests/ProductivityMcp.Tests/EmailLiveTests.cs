@@ -30,6 +30,7 @@ public sealed class EmailLiveTests
         const string account = "lukas.brueckner97@gmail.com";
         var marker = $"[productivity-mcp-live-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}]";
         var attachmentPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.txt");
+        string? downloadedPath = null;
         await File.WriteAllTextAsync(attachmentPath, marker);
         var created = new List<string>();
         try
@@ -62,6 +63,7 @@ public sealed class EmailLiveTests
             var full = Success(await provider.GetMessagesAsync(account, [sent.Id], EmailContentFormat.Plain, false)).Single().Message!;
             var attachment = full.Attachments.Single();
             var downloaded = Success(await provider.GetAttachmentAsync(account, sent.Id, attachment.AttachmentId));
+            downloadedPath = downloaded.Path;
             Assert.AreEqual(marker, await File.ReadAllTextAsync(downloaded.Path));
 
             var thread = Success(await provider.GetThreadsAsync(account, [sent.ThreadId], EmailContentFormat.Markdown, false));
@@ -107,6 +109,7 @@ public sealed class EmailLiveTests
         {
             if (created.Count > 0) await provider.TrashAsync(account, created);
             File.Delete(attachmentPath);
+            if (downloadedPath is not null) File.Delete(downloadedPath);
         }
     }
 

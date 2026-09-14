@@ -135,9 +135,12 @@ internal sealed class GoogleEmailProvider(
     public async Task<EmailAttachmentFile> GetAttachmentAsync(string messageId, string attachmentId, CancellationToken cancellationToken)
     {
         using var service = await serviceFactory.CreateGmailAsync(cancellationToken).ConfigureAwait(false);
-        var full = await service.Users.Messages.Get("me", messageId).ExecuteAsync(cancellationToken).ConfigureAwait(false);
-        var part = Flatten(full.Payload).FirstOrDefault(x => x.Body?.AttachmentId == attachmentId) ?? throw new KeyNotFoundException("Email attachment was not found.");
-        var value = await service.Users.Messages.Attachments.Get("me", messageId, attachmentId).ExecuteAsync(cancellationToken).ConfigureAwait(false);
+        var get = service.Users.Messages.Get("me", messageId);
+        get.Format = UsersResource.MessagesResource.GetRequest.FormatEnum.Full;
+        var full = await get.ExecuteAsync(cancellationToken).ConfigureAwait(false);
+        var part = Flatten(full.Payload).FirstOrDefault(x => x.PartId == attachmentId && x.Body?.AttachmentId is not null)
+            ?? throw new KeyNotFoundException("Email attachment was not found.");
+        var value = await service.Users.Messages.Attachments.Get("me", messageId, part.Body.AttachmentId).ExecuteAsync(cancellationToken).ConfigureAwait(false);
         var bytes = Decode(value.Data);
         var directory = Path.Combine(Path.GetDirectoryName(options.AccountsPath)!, "downloads");
         Directory.CreateDirectory(directory);
@@ -233,11 +236,13 @@ internal sealed class GoogleEmailProvider(
 
     private async Task<EmailMessage> GetMessageAsync(GmailService service, string id, EmailContentFormat format, bool loadRemoteImages, CancellationToken cancellationToken)
     {
-        var full = await service.Users.Messages.Get("me", id).ExecuteAsync(cancellationToken).ConfigureAwait(false);
+        var get = service.Users.Messages.Get("me", id);
+        get.Format = UsersResource.MessagesResource.GetRequest.FormatEnum.Full;
+        var full = await get.ExecuteAsync(cancellationToken).ConfigureAwait(false);
         var raw = await GetRawAsync(service, id, cancellationToken).ConfigureAwait(false);
         var mime = EmailContentService.Parse(raw.Raw);
         var converted = await content.ConvertAsync(mime, format, loadRemoteImages, cancellationToken).ConfigureAwait(false);
-        var attachments = Flatten(full.Payload).Where(x => x.Body?.AttachmentId is not null).Select(x => new EmailAttachment(x.Body.AttachmentId, x.Filename ?? "attachment", x.MimeType ?? "application/octet-stream", x.Body.Size ?? 0)).ToArray();
+        var attachments = Flatten(full.Payload).Where(x => x.Body?.AttachmentId is not null).Select(x => new EmailAttachment(x.PartId, x.Filename ?? "attachment", x.MimeType ?? "application/octet-stream", x.Body.Size ?? 0)).ToArray();
         return new EmailMessage(id, account, full.ThreadId, Date(full), Address(mime.From.Mailboxes.FirstOrDefault()), mime.To.Mailboxes.Select(Address).ToArray(), mime.Cc.Mailboxes.Select(Address).ToArray(), mime.Bcc.Mailboxes.Select(Address).ToArray(), mime.Subject ?? "", converted.Body, attachments, Has(full, "UNREAD"), Has(full, "STARRED"), Has(full, "IMPORTANT"), full.LabelIds?.ToArray() ?? [], converted.Images);
     }
 
