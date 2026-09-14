@@ -77,7 +77,7 @@ public sealed class ConfigurationAppTests
         Assert.AreEqual("person@example.com", viewModel.Accounts[0].Email);
         Assert.AreEqual("Work", viewModel.Accounts[0].Calendars[1].Name);
         Assert.AreEqual("Groceries", viewModel.Accounts[0].TaskLists[1].Name);
-        Assert.AreEqual("1 Google-Konto verbunden", viewModel.StatusTitle);
+        Assert.AreEqual("1 Google-Konto konfiguriert", viewModel.StatusTitle);
         Assert.IsFalse(viewModel.IsFeedbackError);
     }
 
@@ -108,7 +108,40 @@ public sealed class ConfigurationAppTests
         Assert.HasCount(2, viewModel.Accounts);
         Assert.AreEqual("person@example.com", viewModel.Accounts[0].Email);
         Assert.AreEqual("second@example.com", viewModel.Accounts[1].Email);
-        Assert.AreEqual("2 Google-Konten verbunden", viewModel.StatusTitle);
+        Assert.AreEqual("2 Google-Konten konfiguriert", viewModel.StatusTitle);
+    }
+
+    [TestMethod]
+    public async System.Threading.Tasks.Task ViewModel_ImportCredentialsDoesNotChooseServicesForUser()
+    {
+        var service = new FakeSetupService();
+        var viewModel = new MainWindowViewModel(service);
+
+        await viewModel.ImportCredentialsAsync("credentials.json");
+
+        Assert.AreEqual(0, service.ConnectCalls);
+        Assert.IsTrue(viewModel.ShowConnectionAction);
+        Assert.IsFalse(viewModel.HasAccounts);
+    }
+
+    [TestMethod]
+    public void MultiProvider_ExcludesEmailOnlyAccountsFromCalendarAndTasks()
+    {
+        using var files = TestFiles.Create();
+        var catalog = new GoogleAccountCatalog(files.Options);
+        catalog.Upsert(new GoogleAccountRegistration("calendar", "calendar@example.com", true, false));
+        catalog.Upsert(new GoogleAccountRegistration("email", "email@example.com", false, true));
+        var provider = new MultiGoogleProvider(files.Options);
+
+        var calendarProviders = (Array)typeof(MultiGoogleProvider)
+            .GetMethod("CalendarProviders", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(provider, null)!;
+        var taskProviders = (Array)typeof(MultiGoogleProvider)
+            .GetMethod("TaskProviders", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(provider, null)!;
+
+        Assert.AreEqual(1, calendarProviders.Length);
+        Assert.AreEqual(1, taskProviders.Length);
     }
 
     [TestMethod]
@@ -214,6 +247,18 @@ public sealed class ConfigurationAppTests
             _connected = true;
             return OperationResult.Ok(Summary(includeSecondAccount: true));
         }
+
+        public System.Threading.Tasks.Task<OperationResult<ConnectionSummary>> AddEmailAccountAsync(
+            CancellationToken cancellationToken = default) =>
+            System.Threading.Tasks.Task.FromResult<OperationResult<ConnectionSummary>>(OperationResult.Ok(Summary()));
+
+        public System.Threading.Tasks.Task<OperationResult<ConnectionSummary>> EnableEmailAsync(
+            string accountKey, CancellationToken cancellationToken = default) =>
+            System.Threading.Tasks.Task.FromResult<OperationResult<ConnectionSummary>>(OperationResult.Ok(Summary()));
+
+        public System.Threading.Tasks.Task<OperationResult<ConnectionSummary>> DisableEmailAsync(
+            string accountKey, CancellationToken cancellationToken = default) =>
+            System.Threading.Tasks.Task.FromResult<OperationResult<ConnectionSummary>>(OperationResult.Ok(Summary()));
 
         public OperationResult<SetupSnapshot> Disconnect(string accountKey)
         {

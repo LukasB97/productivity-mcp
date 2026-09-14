@@ -161,10 +161,12 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
             taskId);
 
     private GoogleCalendarProvider[] CalendarProviders() => _accounts.List()
+        .Where(account => account.CalendarTasksEnabled)
         .Select(account => new GoogleCalendarProvider(new GoogleServiceFactory(_accounts.OptionsFor(account.Key))))
         .ToArray();
 
     private GoogleTasksProvider[] TaskProviders() => _accounts.List()
+        .Where(account => account.CalendarTasksEnabled)
         .Select(account => new GoogleTasksProvider(new GoogleServiceFactory(_accounts.OptionsFor(account.Key))))
         .ToArray();
 

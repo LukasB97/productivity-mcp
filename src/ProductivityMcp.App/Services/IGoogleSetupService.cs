@@ -12,6 +12,12 @@ public interface IGoogleSetupService
 
     Task<OperationResult<ConnectionSummary>> AddAccountAsync(CancellationToken cancellationToken = default);
 
+    Task<OperationResult<ConnectionSummary>> AddEmailAccountAsync(CancellationToken cancellationToken = default);
+
+    Task<OperationResult<ConnectionSummary>> EnableEmailAsync(string accountKey, CancellationToken cancellationToken = default);
+
+    Task<OperationResult<ConnectionSummary>> DisableEmailAsync(string accountKey, CancellationToken cancellationToken = default);
+
     OperationResult<SetupSnapshot> Disconnect(string accountKey);
 }
 
@@ -26,6 +32,10 @@ public sealed record AccountConnectionSummary(
     string Key,
     string Email,
     IReadOnlyList<CalendarInfo> Calendars,
-    IReadOnlyList<TaskListInfo> TaskLists);
+    IReadOnlyList<TaskListInfo> TaskLists,
+    bool CalendarTasksEnabled = true,
+    bool CalendarTasksConnected = true,
+    bool EmailEnabled = false,
+    bool EmailConnected = false);
 
 public sealed record ConnectionSummary(IReadOnlyList<AccountConnectionSummary> Accounts);

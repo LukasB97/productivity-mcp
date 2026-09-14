@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ProductivityMcp.Core;
+using ProductivityMcp.Email;
 using ProductivityMcp.Providers.Google;
 using ProductivityMcp.Server;
 
@@ -16,14 +17,18 @@ builder.Logging.AddConsole(console =>
 
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton<MultiGoogleProvider>();
+builder.Services.AddSingleton<EmailContentService>();
+builder.Services.AddSingleton<MultiGoogleEmailProvider>();
 builder.Services.AddSingleton<ICalendarProvider>(services => services.GetRequiredService<MultiGoogleProvider>());
 builder.Services.AddSingleton<ITasksProvider>(services => services.GetRequiredService<MultiGoogleProvider>());
+builder.Services.AddSingleton<IEmailProvider>(services => services.GetRequiredService<MultiGoogleEmailProvider>());
 
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
     .WithTools<CalendarTools>()
     .WithTools<TasksTools>()
+    .WithTools<EmailTools>()
     .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (request, cancellationToken) =>
     {
         try

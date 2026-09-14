@@ -2,7 +2,11 @@ using System.Text.Json;
 
 namespace ProductivityMcp.Providers.Google;
 
-public sealed record GoogleAccountRegistration(string Key, string Email);
+public sealed record GoogleAccountRegistration(
+    string Key,
+    string Email,
+    bool CalendarTasksEnabled = true,
+    bool EmailEnabled = false);
 
 public sealed class GoogleAccountCatalog(GoogleOptions baseOptions)
 {
@@ -20,13 +24,15 @@ public sealed class GoogleAccountCatalog(GoogleOptions baseOptions)
             registrations.Insert(0, new GoogleAccountRegistration(PrimaryAccountKey, "Google-Konto"));
         }
 
-        return registrations.Where(item => HasToken(item.Key)).ToArray();
+        return registrations;
     }
 
     public GoogleOptions OptionsFor(string accountKey) => baseOptions with
     {
         TokenStorePath = TokenDirectory(accountKey),
     };
+
+    public GoogleOptions EmailOptionsFor(string accountKey) => OptionsFor(accountKey);
 
     public static string CreateAccountKey() => Guid.NewGuid().ToString("N");
 
@@ -49,6 +55,14 @@ public sealed class GoogleAccountCatalog(GoogleOptions baseOptions)
 
     public bool HasToken(string accountKey) =>
         File.Exists(Path.Combine(TokenDirectory(accountKey), GoogleServiceFactory.TokenFileName));
+
+    public bool HasEmailToken(string accountKey) =>
+        HasToken(accountKey);
+
+    public bool HasAnyToken() => List().Any(item => HasToken(item.Key) || HasEmailToken(item.Key));
+
+    public string EmailTokenDirectory(string accountKey) =>
+        Path.Combine(TokenDirectory(accountKey), "email");
 
     public string TokenDirectory(string accountKey) =>
         string.Equals(accountKey, PrimaryAccountKey, StringComparison.Ordinal)

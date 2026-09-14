@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProductivityMcp.Tests", "te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProductivityMcp.App", "src\ProductivityMcp.App\ProductivityMcp.App.csproj", "{161B3478-417D-49EA-9795-79BB7958286D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProductivityMcp.Email", "src\ProductivityMcp.Email\ProductivityMcp.Email.csproj", "{A153566E-C34A-4DB5-83E4-37956EF0230A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -87,6 +89,18 @@ Global
 		{161B3478-417D-49EA-9795-79BB7958286D}.Release|x64.Build.0 = Release|Any CPU
 		{161B3478-417D-49EA-9795-79BB7958286D}.Release|x86.ActiveCfg = Release|Any CPU
 		{161B3478-417D-49EA-9795-79BB7958286D}.Release|x86.Build.0 = Release|Any CPU
+		{A153566E-C34A-4DB5-83E4-37956EF0230A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A153566E-C34A-4DB5-83E4-37956EF0230A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A153566E-C34A-4DB5-83E4-37956EF0230A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A153566E-C34A-4DB5-83E4-37956EF0230A}.Debug|x64.Build.0 = Debug|Any CPU
+		{A153566E-C34A-4DB5-83E4-37956EF0230A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A153566E-C34A-4DB5-83E4-37956EF0230A}.Debug|x86.Build.0 = Debug|Any CPU
+		{A153566E-C34A-4DB5-83E4-37956EF0230A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A153566E-C34A-4DB5-83E4-37956EF0230A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A153566E-C34A-4DB5-83E4-37956EF0230A}.Release|x64.ActiveCfg = Release|Any CPU
+		{A153566E-C34A-4DB5-83E4-37956EF0230A}.Release|x64.Build.0 = Release|Any CPU
+		{A153566E-C34A-4DB5-83E4-37956EF0230A}.Release|x86.ActiveCfg = Release|Any CPU
+		{A153566E-C34A-4DB5-83E4-37956EF0230A}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -97,5 +111,6 @@ Global
 		{34CB4E5E-18B2-4CDF-ABDA-5D06F79E9BD1} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{69D71130-4178-43A6-9AD5-0A7870199CD6} = {C4BD50DD-C53F-44D5-B0C4-D956028E7BA3}
 		{161B3478-417D-49EA-9795-79BB7958286D} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{A153566E-C34A-4DB5-83E4-37956EF0230A} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
