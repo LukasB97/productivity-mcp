@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Reflection;
 using System.Text.Json;
 using MimeKit;
@@ -178,6 +179,71 @@ public sealed class EmailTests
             Assert.AreEqual("kept.txt", mime.Attachments.OfType<MimePart>().Single().FileName);
         }
         finally { File.Delete(path); }
+    }
+
+    [TestMethod]
+    public void DraftPatch_PreservesLiteralPlainBodyWhenOnlyAttachmentsChange()
+    {
+        const string original = "invoice_item_1 and *literal* [brackets]";
+        var mime = new MimeMessage { Body = new TextPart("plain") { Text = original } };
+
+        EmailContentService.ApplyDraftPatch(mime, new EmailDraftPatch { Attachments = [] });
+
+        Assert.AreEqual(original, mime.TextBody);
+        Assert.IsNull(mime.HtmlBody);
+    }
+
+    [TestMethod]
+    public void DraftPatch_PreservesInlineResourcesAndAttachedMessages()
+    {
+        var builder = new BodyBuilder
+        {
+            TextBody = "Original",
+            HtmlBody = "<p>Original</p><img src=\"cid:logo\">",
+        };
+        builder.LinkedResources.Add(new MimePart("image", "png")
+        {
+            Content = new MimeContent(new MemoryStream([1, 2, 3])),
+            ContentId = "logo",
+            ContentDisposition = new ContentDisposition(ContentDisposition.Inline),
+        });
+        builder.Attachments.Add(new MessagePart
+        {
+            ContentDisposition = new ContentDisposition(ContentDisposition.Attachment) { FileName = "attached.eml" },
+            Message = new MimeMessage { Subject = "Attached message", Body = new TextPart("plain") { Text = "Body" } },
+        });
+        var mime = new MimeMessage { Body = builder.ToMessageBody() };
+
+        EmailContentService.ApplyDraftPatch(mime, new EmailDraftPatch
+        {
+            Body = new EmailBody(EmailContentFormat.Html, "<p>Replacement</p>"),
+        });
+
+        Assert.AreEqual("attached.eml", mime.Attachments.OfType<MessagePart>().Single().ContentDisposition?.FileName);
+        Assert.IsTrue(mime.BodyParts.OfType<MimePart>().Any(part => part.ContentId == "logo"));
+    }
+
+    [TestMethod]
+    public void RemoteImages_RejectPrivateIpv6AndMappedIpv4Addresses()
+    {
+        var method = typeof(EmailContentService).GetMethod("IsPrivate", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        foreach (var value in new[] { "fd12:3456:789a::1", "::2", "::ffff:10.0.0.1", "::ffff:169.254.169.254", "2001:db8::1" })
+            Assert.IsTrue((bool)method.Invoke(null, [IPAddress.Parse(value)])!, value);
+
+        Assert.IsFalse((bool)method.Invoke(null, [IPAddress.Parse("2606:4700:4700::1111")])!);
+    }
+
+    [TestMethod]
+    public async System.Threading.Tasks.Task RemoteImages_StopReadingAtConfiguredLimit()
+    {
+        var method = typeof(EmailContentService).GetMethod("ReadBoundedAsync", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+        using var content = new ByteArrayContent(new byte[10 * 1024 * 1024 + 1]);
+        var task = (System.Threading.Tasks.Task<byte[]>)method.Invoke(null, [content, 10 * 1024 * 1024, CancellationToken.None])!;
+
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(async () => await task);
     }
 
     [TestMethod]

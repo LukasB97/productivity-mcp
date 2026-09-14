@@ -52,6 +52,7 @@ public sealed class EmailLiveTests
             }));
             Assert.IsTrue(query.Complete);
             Assert.IsTrue(query.Messages.Any(x => x.Id == sent.Id));
+            Assert.IsTrue(query.Messages.Single(x => x.Id == sent.Id).HasAttachments);
 
             foreach (var format in new[] { EmailContentFormat.Plain, EmailContentFormat.Html, EmailContentFormat.Markdown, EmailContentFormat.Image })
             {
@@ -81,14 +82,22 @@ public sealed class EmailLiveTests
             var forwarded = Success(await provider.ForwardAsync(
                 account, sent.Id, [account], [], [], new(EmailContentFormat.Markdown, "Forward prefix")));
             created.Add(forwarded.Id);
+            var forwardedRead = Success(await provider.GetMessagesAsync(account, [forwarded.Id], EmailContentFormat.Plain, false));
+            Assert.HasCount(1, forwardedRead.Single().Message!.Attachments);
 
-            var draft = Success(await provider.CreateDraftAsync(account, new EmailDraftInput { Subject = marker }));
+            var draft = Success(await provider.CreateDraftAsync(account, new EmailDraftInput
+            {
+                Subject = marker,
+                ReplyToMessageId = sent.Id,
+            }));
             var updatedDraft = Success(await provider.UpdateDraftAsync(account, draft.DraftId, new EmailDraftPatch
             {
                 To = [account],
                 Body = new(EmailContentFormat.Markdown, $"Draft {marker}"),
             }));
             Assert.AreEqual(draft.DraftId, updatedDraft.DraftId);
+            var threadedDraft = Success(await provider.GetMessagesAsync(account, [updatedDraft.MessageId], EmailContentFormat.Plain, false));
+            Assert.AreEqual(sent.ThreadId, threadedDraft.Single().Message!.ThreadId);
             Assert.IsTrue(Success(await provider.ListDraftsAsync(account, 50, null)).Drafts.Any(x => x.DraftId == draft.DraftId));
             var draftSent = Success(await provider.SendDraftAsync(account, draft.DraftId));
             created.Add(draftSent.Id);

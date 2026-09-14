@@ -74,12 +74,18 @@ public sealed class EmailContentService
 
         if (patch.HasBody || patch.HasAttachments)
         {
-            var body = patch.HasBody ? patch.Body : ExistingBody(message);
-            var attachments = patch.HasAttachments
-                ? patch.Attachments ?? []
-                : [];
-            var preserved = patch.HasAttachments ? [] : message.Attachments.OfType<MimePart>().ToArray();
-            ApplyBody(message, body, attachments, preserved);
+            var builder = new BodyBuilder();
+            if (patch.HasBody)
+                SetBody(builder, patch.Body);
+            else
+            {
+                builder.TextBody = message.TextBody;
+                builder.HtmlBody = message.HtmlBody;
+            }
+
+            AddExistingParts(builder, message, includeAttachments: !patch.HasAttachments);
+            AddFileAttachments(builder, patch.HasAttachments ? patch.Attachments ?? [] : []);
+            message.Body = builder.ToMessageBody();
         }
     }
 
@@ -245,29 +251,79 @@ public sealed class EmailContentService
         var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
         if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             throw new HttpRequestException("Remote resource is not an image.");
-        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-        if (bytes.Length > 10 * 1024 * 1024) throw new HttpRequestException("Remote image exceeds 10 MiB.");
+        const int maximumBytes = 10 * 1024 * 1024;
+        if (response.Content.Headers.ContentLength > maximumBytes)
+            throw new HttpRequestException("Remote image exceeds 10 MiB.");
+        var bytes = await ReadBoundedAsync(response.Content, maximumBytes, cancellationToken).ConfigureAwait(false);
         return (bytes, contentType);
     }
 
     private static bool IsPrivate(IPAddress address)
     {
+        if (address.IsIPv4MappedToIPv6) return IsPrivate(address.MapToIPv4());
         if (address.AddressFamily == AddressFamily.InterNetworkV6)
-            return address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.Equals(IPAddress.IPv6Any);
-        var b = address.GetAddressBytes();
-        return b[0] == 10 || b[0] == 127 || b[0] == 0 || (b[0] == 169 && b[1] == 254) || (b[0] == 172 && b[1] is >= 16 and <= 31) || (b[0] == 192 && b[1] == 168);
+        {
+            var ipv6Bytes = address.GetAddressBytes();
+            var isGlobalUnicast = (ipv6Bytes[0] & 0xe0) == 0x20;
+            return !isGlobalUnicast || address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6Multicast ||
+                   address.Equals(IPAddress.IPv6Any) || address.Equals(IPAddress.IPv6None) ||
+                   (ipv6Bytes[0] & 0xfe) == 0xfc ||
+                   (ipv6Bytes[0] == 0x20 && ipv6Bytes[1] == 0x01 && ipv6Bytes[2] == 0x0d && ipv6Bytes[3] == 0xb8);
+        }
+        var ipv4Bytes = address.GetAddressBytes();
+        return ipv4Bytes[0] == 10 || ipv4Bytes[0] == 127 || ipv4Bytes[0] == 0 || ipv4Bytes[0] >= 224 ||
+               (ipv4Bytes[0] == 100 && ipv4Bytes[1] is >= 64 and <= 127) ||
+               (ipv4Bytes[0] == 169 && ipv4Bytes[1] == 254) ||
+               (ipv4Bytes[0] == 172 && ipv4Bytes[1] is >= 16 and <= 31) ||
+               (ipv4Bytes[0] == 192 && ipv4Bytes[1] == 168) ||
+               (ipv4Bytes[0] == 192 && ipv4Bytes[1] == 0 && (ipv4Bytes[2] == 0 || ipv4Bytes[2] == 2)) ||
+               (ipv4Bytes[0] == 198 && (ipv4Bytes[1] is 18 or 19 || (ipv4Bytes[1] == 51 && ipv4Bytes[2] == 100))) ||
+               (ipv4Bytes[0] == 203 && ipv4Bytes[1] == 0 && ipv4Bytes[2] == 113);
+    }
+
+    private static async Task<byte[]> ReadBoundedAsync(
+        HttpContent content, int maximumBytes, CancellationToken cancellationToken)
+    {
+        await using var source = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var destination = new MemoryStream();
+        var buffer = new byte[81920];
+        var total = 0;
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            if (read == 0) return destination.ToArray();
+            total += read;
+            if (total > maximumBytes) throw new HttpRequestException("Remote image exceeds 10 MiB.");
+            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static void Add(InternetAddressList target, IEnumerable<string> values)
     { foreach (var value in values) target.Add(MailboxAddress.Parse(value)); }
     private static void Replace(InternetAddressList target, IEnumerable<string> values)
     { target.Clear(); Add(target, values); }
-    private static EmailBody? ExistingBody(MimeMessage message) => message.HtmlBody is not null
-        ? new(EmailContentFormat.Html, message.HtmlBody)
-        : message.TextBody is not null ? new(EmailContentFormat.Markdown, message.TextBody) : null;
-    private static void ApplyBody(MimeMessage message, EmailBody? body, IEnumerable<EmailAttachmentInput> attachments, IEnumerable<MimePart>? preserved = null)
+    public static void AddExistingParts(BodyBuilder builder, MimeMessage message, bool includeAttachments)
+    {
+        if (includeAttachments)
+        {
+            foreach (var attachment in message.Attachments) builder.Attachments.Add(attachment);
+        }
+
+        foreach (var resource in message.BodyParts.OfType<MimePart>().Where(part =>
+                     !part.IsAttachment && !string.IsNullOrWhiteSpace(part.ContentId)))
+            builder.LinkedResources.Add(resource);
+    }
+
+    private static void ApplyBody(MimeMessage message, EmailBody? body, IEnumerable<EmailAttachmentInput> attachments)
     {
         var builder = new BodyBuilder();
+        SetBody(builder, body);
+        AddFileAttachments(builder, attachments);
+        message.Body = builder.ToMessageBody();
+    }
+
+    private static void SetBody(BodyBuilder builder, EmailBody? body)
+    {
         if (body?.Format == EmailContentFormat.Markdown)
         {
             builder.HtmlBody = Markdown.ToHtml(body.Content);
@@ -279,13 +335,15 @@ public sealed class EmailContentService
             builder.HtmlBody = body.Content;
             builder.TextBody = HtmlToPlain(body.Content);
         }
-        foreach (var part in preserved ?? []) builder.Attachments.Add(part);
+    }
+
+    private static void AddFileAttachments(BodyBuilder builder, IEnumerable<EmailAttachmentInput> attachments)
+    {
         foreach (var attachment in attachments)
         {
             if (!File.Exists(attachment.Path)) throw new ConfigurationException("Email attachment was not found.", "attachments.path");
             builder.Attachments.Add(attachment.Name ?? Path.GetFileName(attachment.Path), File.ReadAllBytes(attachment.Path));
         }
-        message.Body = builder.ToMessageBody();
     }
     private static string HtmlToPlain(string html) => WebUtility.HtmlDecode(Regex.Replace(html, "<[^>]+>", " ")).Trim();
     private static string MarkdownToPlain(string markdown) => Regex.Replace(markdown, @"[`#*_>\[\]()]", "").Trim();

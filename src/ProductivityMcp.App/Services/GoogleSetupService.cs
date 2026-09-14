@@ -152,9 +152,26 @@ public sealed class GoogleSetupService : IGoogleSetupService
         var existing = _accounts.List().FirstOrDefault(x => string.Equals(x.Email, email, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
-            CopyEmailToken(temporaryKey, existing.Key);
-            _accounts.Upsert(existing with { EmailEnabled = true });
-            CleanupPendingAccount(temporaryKey);
+            try
+            {
+                if (existing.CalendarTasksEnabled)
+                {
+                    var combined = await AuthenticateEmailAsync(
+                        existing.Key, email, includeCalendarTasks: true, cancellationToken).ConfigureAwait(false);
+                    if (combined is OperationResult<string>.Failure combinedFailure)
+                        return OperationResult.Fail<ConnectionSummary>(combinedFailure.Error);
+                }
+                else
+                {
+                    CopyEmailToken(temporaryKey, existing.Key);
+                }
+
+                _accounts.Upsert(existing with { EmailEnabled = true });
+            }
+            finally
+            {
+                CleanupPendingAccount(temporaryKey);
+            }
         }
         else
         {

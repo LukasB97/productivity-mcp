@@ -27,8 +27,7 @@ internal sealed class GoogleEmailProvider(
         foreach (var item in page.Messages ?? [])
         {
             var get = service.Users.Messages.Get("me", item.Id);
-            get.Format = UsersResource.MessagesResource.GetRequest.FormatEnum.Metadata;
-            get.MetadataHeaders = new global::Google.Apis.Util.Repeatable<string>(["From", "Subject"]);
+            get.Format = UsersResource.MessagesResource.GetRequest.FormatEnum.Full;
             var message = await get.ExecuteAsync(cancellationToken).ConfigureAwait(false);
             result.Add(ToSummary(message));
         }
@@ -76,18 +75,9 @@ internal sealed class GoogleEmailProvider(
         var mime = EmailContentService.Compose(account, value);
         string? threadId = null;
         if (!string.IsNullOrWhiteSpace(value.ReplyToMessageId))
-        {
-            var source = await GetRawAsync(service, value.ReplyToMessageId, cancellationToken).ConfigureAwait(false);
-            var parsed = EmailContentService.Parse(source.Raw);
-            if (!string.IsNullOrWhiteSpace(parsed.MessageId))
-            {
-                mime.InReplyTo = parsed.MessageId;
-                mime.References.Add(parsed.MessageId);
-            }
-            threadId = source.ThreadId;
-        }
+            threadId = await ApplyReplyAsync(service, mime, value.ReplyToMessageId, cancellationToken).ConfigureAwait(false);
         var sent = await service.Users.Messages.Send(new GmailMessage { Raw = EmailContentService.ToRaw(mime), ThreadId = threadId }, "me").ExecuteAsync(cancellationToken).ConfigureAwait(false);
-        return await GetMessageAsync(service, sent.Id, EmailContentFormat.Plain, false, cancellationToken).ConfigureAwait(false);
+        return await GetSentMessageOrReceiptAsync(service, sent, mime, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<EmailMessage> ForwardAsync(string messageId, IReadOnlyList<string> to, IReadOnlyList<string> cc, IReadOnlyList<string> bcc, EmailBody? prefix, CancellationToken cancellationToken)
@@ -111,10 +101,10 @@ internal sealed class GoogleEmailProvider(
         var outgoing = new OutgoingEmail { To = to, Cc = cc, Bcc = bcc, Subject = sourceSubject.StartsWith("Fwd:", StringComparison.OrdinalIgnoreCase) ? sourceSubject : $"Fwd: {sourceSubject}", Body = new EmailBody(EmailContentFormat.Html, prefixHtml + "<br><pre>" + System.Net.WebUtility.HtmlEncode(header) + "</pre>" + originalHtml) };
         var mime = EmailContentService.Compose(account, outgoing);
         var builder = new BodyBuilder { HtmlBody = mime.HtmlBody, TextBody = mime.TextBody };
-        foreach (var attachment in source.Attachments.OfType<MimePart>()) builder.Attachments.Add(attachment);
+        EmailContentService.AddExistingParts(builder, source, includeAttachments: true);
         mime.Body = builder.ToMessageBody();
         var sent = await service.Users.Messages.Send(new GmailMessage { Raw = EmailContentService.ToRaw(mime) }, "me").ExecuteAsync(cancellationToken).ConfigureAwait(false);
-        return await GetMessageAsync(service, sent.Id, EmailContentFormat.Plain, false, cancellationToken).ConfigureAwait(false);
+        return await GetSentMessageOrReceiptAsync(service, sent, mime, cancellationToken).ConfigureAwait(false);
     }
 
     public Task<IReadOnlyList<EmailMutationResult>> UpdateAsync(IReadOnlyList<string> ids, EmailMessagePatch patch, CancellationToken cancellationToken) => ModifyAsync(ids, patch, cancellationToken);
@@ -169,7 +159,10 @@ internal sealed class GoogleEmailProvider(
     {
         using var service = await serviceFactory.CreateGmailAsync(cancellationToken).ConfigureAwait(false);
         var mime = EmailContentService.ComposeDraft(account, value);
-        var draft = await service.Users.Drafts.Create(new Draft { Message = new GmailMessage { Raw = EmailContentService.ToRaw(mime) } }, "me").ExecuteAsync(cancellationToken).ConfigureAwait(false);
+        var threadId = string.IsNullOrWhiteSpace(value.ReplyToMessageId)
+            ? null
+            : await ApplyReplyAsync(service, mime, value.ReplyToMessageId, cancellationToken).ConfigureAwait(false);
+        var draft = await service.Users.Drafts.Create(new Draft { Message = new GmailMessage { Raw = EmailContentService.ToRaw(mime), ThreadId = threadId } }, "me").ExecuteAsync(cancellationToken).ConfigureAwait(false);
         return ToDraft(draft.Id, draft.Message.Id, mime);
     }
 
@@ -180,7 +173,12 @@ internal sealed class GoogleEmailProvider(
         var raw = await GetRawAsync(service, current.Message.Id, cancellationToken).ConfigureAwait(false);
         var mime = EmailContentService.Parse(raw.Raw);
         EmailContentService.ApplyDraftPatch(mime, patch);
-        var draft = await service.Users.Drafts.Update(new Draft { Id = draftId, Message = new GmailMessage { Raw = EmailContentService.ToRaw(mime) } }, "me", draftId).ExecuteAsync(cancellationToken).ConfigureAwait(false);
+        var threadId = current.Message.ThreadId;
+        if (patch.HasReplyToMessageId)
+            threadId = string.IsNullOrWhiteSpace(patch.ReplyToMessageId)
+                ? ClearReply(mime)
+                : await ApplyReplyAsync(service, mime, patch.ReplyToMessageId, cancellationToken).ConfigureAwait(false);
+        var draft = await service.Users.Drafts.Update(new Draft { Id = draftId, Message = new GmailMessage { Raw = EmailContentService.ToRaw(mime), ThreadId = threadId } }, "me", draftId).ExecuteAsync(cancellationToken).ConfigureAwait(false);
         return ToDraft(draft.Id, draft.Message.Id, mime);
     }
 
@@ -195,7 +193,7 @@ internal sealed class GoogleEmailProvider(
         if (string.IsNullOrWhiteSpace(mime.TextBody) && string.IsNullOrWhiteSpace(mime.HtmlBody))
             throw new System.ComponentModel.DataAnnotations.ValidationException("The draft must contain a body before it can be sent.");
         var sent = await service.Users.Drafts.Send(new Draft { Id = draftId }, "me").ExecuteAsync(cancellationToken).ConfigureAwait(false);
-        return await GetMessageAsync(service, sent.Id, EmailContentFormat.Plain, false, cancellationToken).ConfigureAwait(false);
+        return await GetSentMessageOrReceiptAsync(service, sent, mime, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<EmailLabel>> ListLabelsAsync(CancellationToken cancellationToken)
@@ -248,6 +246,47 @@ internal sealed class GoogleEmailProvider(
 
     private static async Task<GmailMessage> GetRawAsync(GmailService service, string id, CancellationToken token)
     { var request = service.Users.Messages.Get("me", id); request.Format = UsersResource.MessagesResource.GetRequest.FormatEnum.Raw; return await request.ExecuteAsync(token).ConfigureAwait(false); }
+
+    private async Task<EmailMessage> GetSentMessageOrReceiptAsync(
+        GmailService service, GmailMessage sent, MimeMessage mime, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await GetMessageAsync(service, sent.Id, EmailContentFormat.Plain, false, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException && GoogleOperation.Translate(exception) is not null)
+        {
+            return new EmailMessage(
+                sent.Id, account, sent.ThreadId, mime.Date == default ? DateTimeOffset.UtcNow : mime.Date,
+                Address(mime.From.Mailboxes.FirstOrDefault()), mime.To.Mailboxes.Select(Address).ToArray(),
+                mime.Cc.Mailboxes.Select(Address).ToArray(), mime.Bcc.Mailboxes.Select(Address).ToArray(),
+                mime.Subject ?? "", new EmailBody(EmailContentFormat.Plain, mime.TextBody ?? HtmlToText(mime.HtmlBody ?? "")),
+                [], false, false, false, sent.LabelIds?.ToArray() ?? [], []);
+        }
+    }
+
+    private static async Task<string?> ApplyReplyAsync(
+        GmailService service, MimeMessage mime, string messageId, CancellationToken cancellationToken)
+    {
+        var source = await GetRawAsync(service, messageId, cancellationToken).ConfigureAwait(false);
+        var parent = EmailContentService.Parse(source.Raw);
+        mime.InReplyTo = null;
+        mime.References.Clear();
+        foreach (var reference in parent.References) mime.References.Add(reference);
+        if (!string.IsNullOrWhiteSpace(parent.MessageId))
+        {
+            mime.InReplyTo = parent.MessageId;
+            if (!mime.References.Contains(parent.MessageId)) mime.References.Add(parent.MessageId);
+        }
+        return source.ThreadId;
+    }
+
+    private static string? ClearReply(MimeMessage mime)
+    {
+        mime.InReplyTo = null;
+        mime.References.Clear();
+        return null;
+    }
     private EmailSummary ToSummary(GmailMessage x) => new(x.Id, account, x.ThreadId, Date(x), ParseAddress(Header(x, "From")), Header(x, "Subject"), x.Snippet ?? "", Has(x, "UNREAD"), Flatten(x.Payload).Any(p => p.Body?.AttachmentId is not null));
     private EmailDraft ToDraft(string draftId, string messageId, MimeMessage mime) => new(draftId, messageId, account, mime.To.Mailboxes.Select(x => x.Address).ToArray(), mime.Cc.Mailboxes.Select(x => x.Address).ToArray(), mime.Bcc.Mailboxes.Select(x => x.Address).ToArray(), mime.Subject ?? "", (mime.TextBody ?? HtmlToText(mime.HtmlBody ?? "")).Take(200).Aggregate("", (a, c) => a + c), mime.Attachments.Any());
     private static EmailLabel ToLabel(Label x) => new(x.Id, x.Name, x.MessagesTotal, x.MessagesUnread, x.ThreadsTotal, x.ThreadsUnread);

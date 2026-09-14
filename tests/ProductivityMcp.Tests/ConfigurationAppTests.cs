@@ -112,6 +112,39 @@ public sealed class ConfigurationAppTests
     }
 
     [TestMethod]
+    public async System.Threading.Tasks.Task ViewModel_ImportCredentialsDoesNotChooseServicesForUser()
+    {
+        var service = new FakeSetupService();
+        var viewModel = new MainWindowViewModel(service);
+
+        await viewModel.ImportCredentialsAsync("credentials.json");
+
+        Assert.AreEqual(0, service.ConnectCalls);
+        Assert.IsTrue(viewModel.ShowConnectionAction);
+        Assert.IsFalse(viewModel.HasAccounts);
+    }
+
+    [TestMethod]
+    public void MultiProvider_ExcludesEmailOnlyAccountsFromCalendarAndTasks()
+    {
+        using var files = TestFiles.Create();
+        var catalog = new GoogleAccountCatalog(files.Options);
+        catalog.Upsert(new GoogleAccountRegistration("calendar", "calendar@example.com", true, false));
+        catalog.Upsert(new GoogleAccountRegistration("email", "email@example.com", false, true));
+        var provider = new MultiGoogleProvider(files.Options);
+
+        var calendarProviders = (Array)typeof(MultiGoogleProvider)
+            .GetMethod("CalendarProviders", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(provider, null)!;
+        var taskProviders = (Array)typeof(MultiGoogleProvider)
+            .GetMethod("TaskProviders", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(provider, null)!;
+
+        Assert.AreEqual(1, calendarProviders.Length);
+        Assert.AreEqual(1, taskProviders.Length);
+    }
+
+    [TestMethod]
     public void ViewModel_AutostartSettingUpdatesOperatingSystemService()
     {
         var autostart = new FakeAutostartService(enabled: false);

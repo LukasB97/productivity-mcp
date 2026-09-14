@@ -145,11 +145,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    public async AsyncTask ImportCredentialsAsync(string sourcePath)
+    public AsyncTask ImportCredentialsAsync(string sourcePath)
     {
         if (!CanInteract)
         {
-            return;
+            return AsyncTask.CompletedTask;
         }
 
         var result = _setupService.ImportCredentials(sourcePath);
@@ -157,12 +157,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             case OperationResult<SetupSnapshot>.Success success:
                 ApplyLocalState(success.Value);
-                await VerifyConnectionAsync(showBrowserMessage: true);
                 break;
             case OperationResult<SetupSnapshot>.Failure failure:
                 ShowError(failure.Error.Message);
                 break;
         }
+        return AsyncTask.CompletedTask;
     }
 
     [RelayCommand]
@@ -418,7 +418,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         else
         {
             StatusTitle = "Google-Anmeldung fehlt";
-            StatusDetail = "Melde dich an, damit Calendar und Tasks genutzt werden können.";
+            StatusDetail = "Wähle, welche Google-Dienste du für dein erstes Konto verbinden möchtest.";
             ConnectionActionText = "Mit Google anmelden";
         }
     }

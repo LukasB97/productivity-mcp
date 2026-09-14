@@ -78,9 +78,12 @@
         <StackPanel Spacing="14">
           <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" />
           <TextBlock Text="{Binding StatusDetail}" Classes="muted" TextWrapping="Wrap" />
-          <Button Classes="primary" Content="{Binding ConnectionActionText}"
-                  HorizontalAlignment="Left" Command="{Binding ConnectCommand}"
-                  IsEnabled="{Binding CanInteract}" />
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Button Classes="primary" Content="Calendar und Tasks verbinden"
+                    Command="{Binding ConnectCommand}" IsEnabled="{Binding CanInteract}" />
+            <Button Classes="secondary" Content="Nur E-Mail verbinden"
+                    Command="{Binding AddEmailAccountCommand}" IsEnabled="{Binding CanInteract}" />
+          </StackPanel>
         </StackPanel>
       </Border>
 
