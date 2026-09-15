@@ -87,7 +87,8 @@ public sealed class GoogleServiceFactory
     private async System.Threading.Tasks.Task<UserCredential> AuthorizeAsync(
         CancellationToken cancellationToken)
     {
-        if (!File.Exists(_options.CredentialsPath))
+        var credentialsPath = _options.EffectiveCredentialsPath;
+        if (!File.Exists(credentialsPath))
         {
             throw new ConfigurationException(
                 "Google OAuth credentials not found. Set PRODUCTIVITY_MCP_GOOGLE_CREDENTIALS.",
@@ -96,7 +97,7 @@ public sealed class GoogleServiceFactory
 
         Directory.CreateDirectory(_options.TokenStorePath);
         var secrets = (await GoogleClientSecrets.FromFileAsync(
-            _options.CredentialsPath,
+            credentialsPath,
             cancellationToken).ConfigureAwait(false)).Secrets;
 
         return await GoogleWebAuthorizationBroker.AuthorizeAsync(
@@ -104,7 +105,7 @@ public sealed class GoogleServiceFactory
             Scopes(),
             "user",
             cancellationToken,
-            new FileDataStore(_options.TokenStorePath, true)).ConfigureAwait(false);
+            new SecureDataStore(_options.TokenStorePath)).ConfigureAwait(false);
     }
 
     private string[] Scopes()

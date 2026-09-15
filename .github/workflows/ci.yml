@@ -38,7 +38,7 @@ jobs:
         run: src/ProductivityMcp.App/bin/Release/net10.0/playwright.ps1 install chromium
 
       - name: Test
-        run: dotnet test ProductivityMcp.sln --configuration Release --no-build --no-restore
+        run: dotnet test --project tests/ProductivityMcp.Tests/ProductivityMcp.Tests.csproj --configuration Release --no-build --no-restore --filter "TestCategory!=Live"
 
       - name: Verify formatting
         if: runner.os == 'Linux'

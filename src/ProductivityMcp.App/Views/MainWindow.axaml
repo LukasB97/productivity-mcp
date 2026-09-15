@@ -233,6 +233,12 @@
           </StackPanel>
         </Grid>
       </Border>
+
+      <StackPanel Orientation="Horizontal" Spacing="14" HorizontalAlignment="Center">
+        <HyperlinkButton Content="Website" NavigateUri="https://lukasbrueckner.com/project/productivity-mcp" />
+        <HyperlinkButton Content="Datenschutz" NavigateUri="https://lukasbrueckner.com/project/productivity-mcp/datenschutz" />
+        <HyperlinkButton Content="Quellcode" NavigateUri="https://github.com/LukasB97/productivity-mcp" />
+      </StackPanel>
     </StackPanel>
   </ScrollViewer>
 </Window>

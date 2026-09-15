@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v-prefixed tag to publish
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Package (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: macos-latest
+            rid: osx-x64
+          - os: macos-latest
+            rid: osx-arm64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore locked dependencies
+        run: dotnet restore --locked-mode
+
+      - name: Test
+        run: dotnet test --project tests/ProductivityMcp.Tests/ProductivityMcp.Tests.csproj --configuration Release --no-restore --filter "TestCategory!=Live"
+
+      - name: Publish applications
+        shell: pwsh
+        run: |
+          dotnet publish src/ProductivityMcp.App -c Release -r "${{ matrix.rid }}" --self-contained true -p:RestoreLockedMode=false -o "stage/ProductivityMcp/app"
+          dotnet publish src/ProductivityMcp.Server -c Release -r "${{ matrix.rid }}" --self-contained true -p:RestoreLockedMode=false -o "stage/ProductivityMcp/server"
+
+      - name: Add official OAuth desktop client
+        shell: pwsh
+        env:
+          OAUTH_CLIENT_JSON_BASE64: ${{ secrets.GOOGLE_OAUTH_CLIENT_JSON_BASE64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:OAUTH_CLIENT_JSON_BASE64)) {
+            throw "GOOGLE_OAUTH_CLIENT_JSON_BASE64 is required for official releases."
+          }
+          $bytes = [Convert]::FromBase64String($env:OAUTH_CLIENT_JSON_BASE64)
+          [IO.File]::WriteAllBytes("stage/ProductivityMcp/app/google-oauth-client.json", $bytes)
+          [IO.File]::WriteAllBytes("stage/ProductivityMcp/server/google-oauth-client.json", $bytes)
+
+      - name: Create archive
+        shell: pwsh
+        run: |
+          $name = "productivity-mcp-${{ matrix.rid }}"
+          if ("${{ runner.os }}" -eq "Windows") {
+            Compress-Archive -Path "stage/ProductivityMcp" -DestinationPath "$name.zip"
+          } else {
+            tar -czf "$name.tar.gz" -C stage ProductivityMcp
+          }
+
+      - name: Upload package
+        uses: actions/upload-artifact@v6
+        with:
+          name: productivity-mcp-${{ matrix.rid }}
+          path: productivity-mcp-${{ matrix.rid }}.*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Download packages
+        uses: actions/download-artifact@v6
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create checksums
+        working-directory: release-assets
+        run: sha256sum productivity-mcp-* > SHA256SUMS.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: gh release create "$RELEASE_TAG" release-assets/* --verify-tag --generate-notes --title "Productivity MCP $RELEASE_TAG"

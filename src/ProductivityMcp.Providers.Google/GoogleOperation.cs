@@ -1,7 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using System.Net;
+using System.Security.Cryptography;
 using Google;
 using Google.Apis.Auth.OAuth2.Responses;
+using Newtonsoft.Json;
 using ProductivityMcp.Core;
 
 namespace ProductivityMcp.Providers.Google;
@@ -53,6 +55,9 @@ public static class GoogleOperation
         TokenResponseException => new OperationError(
             OperationErrorCode.Authentication,
             "Google authorization is invalid or expired. Sign in again before retrying."),
+        CryptographicException or JsonException => new OperationError(
+            OperationErrorCode.Authentication,
+            "The stored Google authorization cannot be read. Disconnect and sign in again."),
         GoogleApiException google => TranslateGoogleApiException(google),
         HttpRequestException or TimeoutException => new OperationError(
             OperationErrorCode.ProviderUnavailable,
