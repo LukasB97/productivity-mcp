@@ -58,6 +58,9 @@ public static class GoogleOperation
         CryptographicException or JsonException => new OperationError(
             OperationErrorCode.Authentication,
             "The stored Google authorization cannot be read. Disconnect and sign in again."),
+        OAuthStateMismatchException => new OperationError(
+            OperationErrorCode.Authentication,
+            "Google authorization failed its security validation. Start the sign-in again."),
         GoogleApiException google => TranslateGoogleApiException(google),
         HttpRequestException or TimeoutException => new OperationError(
             OperationErrorCode.ProviderUnavailable,

@@ -105,7 +105,8 @@ public sealed class GoogleServiceFactory
             Scopes(),
             "user",
             cancellationToken,
-            new SecureDataStore(_options.TokenStorePath)).ConfigureAwait(false);
+            new SecureDataStore(_options.TokenStorePath),
+            new StatefulCodeReceiver()).ConfigureAwait(false);
     }
 
     private string[] Scopes()
