@@ -10,6 +10,16 @@ namespace ProductivityMcp.Tests;
 public sealed class GoogleAdapterTests
 {
     [TestMethod]
+    public void GoogleAdapter_TranslatesUnreadableProtectedToken()
+    {
+        var error = GoogleOperation.Translate(new System.Security.Cryptography.CryptographicException());
+
+        Assert.IsNotNull(error);
+        Assert.AreEqual(OperationErrorCode.Authentication, error.Code);
+        Assert.IsFalse(error.Retryable);
+    }
+
+    [TestMethod]
     public void GetSortKey_UsesTypedOffset_WhenSdkRawValueUsesWholeHourOffset()
     {
         var expected = new DateTimeOffset(2037, 4, 2, 12, 0, 0, TimeSpan.FromHours(2));

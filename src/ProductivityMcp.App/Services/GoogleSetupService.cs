@@ -19,11 +19,12 @@ public sealed class GoogleSetupService : IGoogleSetupService
     public SetupSnapshot Inspect()
     {
         var credentialsPath = Path.GetFullPath(_options.CredentialsPath);
+        var effectiveCredentialsPath = Path.GetFullPath(_options.EffectiveCredentialsPath);
         var tokenStorePath = Path.GetFullPath(_options.TokenStorePath);
         return new SetupSnapshot(
             Path.GetDirectoryName(credentialsPath) ?? tokenStorePath,
             credentialsPath,
-            File.Exists(credentialsPath),
+            File.Exists(effectiveCredentialsPath),
             tokenStorePath,
             _accounts.HasAnyToken());
     }

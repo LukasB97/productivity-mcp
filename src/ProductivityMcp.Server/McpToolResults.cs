@@ -80,7 +80,7 @@ internal static class McpToolResults
         foreach (var (label, image) in images)
         {
             result.Content.Add(new TextContentBlock { Text = label });
-            result.Content.Add(new ImageContentBlock { MimeType = image.MediaType, Data = image.Data });
+            result.Content.Add(ImageContentBlock.FromBytes(image.Data, image.MediaType));
         }
         return result;
     }

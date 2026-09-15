@@ -2,7 +2,7 @@
 
 Productivity MCP is a local Model Context Protocol server that gives MCP clients structured access to Google Calendar, Google Tasks, and Gmail. A small Avalonia desktop app handles OAuth setup, connected services, tray status, and optional autostart on Windows, macOS, and Linux.
 
-The project targets .NET 10. It is an early-stage personal tool: the tool contract is tested, but there are no versioned releases yet.
+The project targets .NET 10. Versioned, self-contained builds are published for Windows, macOS, and Linux.
 
 ## Features
 
@@ -57,9 +57,7 @@ Set `event.videoMeeting` to `true` when creating an event to request a native Go
 
 ## Prerequisites
 
-- The .NET 10 SDK selected by [`global.json`](global.json).
-- A Google Cloud project with the Google Calendar API, Google Tasks API, and Gmail API enabled.
-- OAuth 2.0 credentials created as a Desktop app.
+- The .NET 10 SDK selected by [`global.json`](global.json) when building from source.
 - An MCP client that can launch a local stdio server.
 
 ## Build and test
@@ -67,13 +65,22 @@ Set `event.videoMeeting` to `true` when creating an event to request a native Go
 ```powershell
 dotnet restore --locked-mode
 dotnet build ProductivityMcp.sln -c Release --no-restore
-dotnet test ProductivityMcp.sln -c Release --no-build --no-restore
+dotnet test --project tests/ProductivityMcp.Tests/ProductivityMcp.Tests.csproj -c Release --no-build --no-restore --filter "TestCategory!=Live"
 dotnet format ProductivityMcp.sln --verify-no-changes --no-restore
 ```
 
 The test suite uses fakes and temporary directories. It does not contact Google. CI runs the same build and tests on Windows, macOS, and Linux.
 
-## Google setup
+## Install and connect Google
+
+Official archives are available under [GitHub Releases](https://github.com/LukasB97/productivity-mcp/releases). They contain the configuration app and MCP server in separate folders and include the project's public Google OAuth desktop-client configuration. They never contain a user's Google credentials or tokens.
+
+1. Download and extract the archive for your operating system.
+2. Start the app from the `app` folder.
+3. Choose Calendar/Tasks or Gmail and complete Google's authorization in your browser.
+4. Configure your MCP client to launch the executable in the archive's `server` folder.
+
+When building from source, create your own Google Cloud configuration:
 
 1. In Google Cloud Console, enable the Google Calendar API, Google Tasks API, and Gmail API.
 2. Configure the OAuth consent screen for the accounts that will use the server.
@@ -92,7 +99,7 @@ By default, credentials, account metadata, and OAuth tokens live under the platf
 | `PRODUCTIVITY_MCP_GOOGLE_TOKENS` | Root directory for account token stores |
 | `PRODUCTIVITY_MCP_GOOGLE_ACCOUNTS` | Connected-account catalog JSON file |
 
-These files contain sensitive local data and must not be committed or shared. OAuth tokens currently use a file-based store rather than the operating-system keychain; see [Security](SECURITY.md) before redistributing the app.
+The OAuth client file identifies the application and is not a user credential. OAuth tokens are sensitive: Productivity MCP encrypts them with a random key protected by Windows DPAPI, macOS Keychain, or Linux Secret Service. Existing plaintext token files are migrated in place the first time they are read. See [Security](SECURITY.md) for details.
 
 ## Connect an MCP client
 
@@ -140,7 +147,7 @@ The detailed dependency boundaries, runtime flow, and tradeoffs are documented i
 - Google is currently the only provider; the public contracts remain provider-neutral.
 - Update and delete calls identify resources by direct provider id, so the server may search connected accounts to locate them.
 - Live-Google checks are intentionally manual and limited to clearly marked data in the tester's own account.
-- OAuth tokens are stored in local files and depend on host filesystem permissions for protection.
+- Linux requires a working Secret Service implementation and the `secret-tool` command for OAuth token protection.
 
 ## Contributing and security
 

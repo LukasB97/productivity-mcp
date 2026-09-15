@@ -47,6 +47,20 @@ public sealed class ConfigurationAppTests
     }
 
     [TestMethod]
+    public void Inspect_AcceptsBundledCredentialsWithoutCopyingThem()
+    {
+        using var files = TestFiles.Create();
+        var bundled = files.Write("release/google-oauth-client.json", "{}");
+        var service = new GoogleSetupService(files.Options with { BundledCredentialsPath = bundled });
+
+        var snapshot = service.Inspect();
+
+        Assert.IsTrue(snapshot.CredentialsPresent);
+        Assert.IsFalse(File.Exists(files.Options.CredentialsPath));
+        Assert.AreEqual(bundled, (files.Options with { BundledCredentialsPath = bundled }).EffectiveCredentialsPath);
+    }
+
+    [TestMethod]
     public void Disconnect_RemovesOnlyGoogleToken()
     {
         using var files = TestFiles.Create();
