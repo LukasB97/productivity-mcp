@@ -2,6 +2,10 @@
 
 All notable changes to Productivity MCP are documented here. The project follows semantic versioning from its first public release.
 
+## 0.1.1
+
+- Replace broad Google Calendar access with event access and read-only calendar-list access.
+
 ## 0.1.0
 
 - Add provider-neutral MCP tools for Google Calendar, Google Tasks, and Gmail.
