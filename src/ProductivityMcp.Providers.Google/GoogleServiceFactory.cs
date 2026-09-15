@@ -102,22 +102,23 @@ public sealed class GoogleServiceFactory
 
         return await GoogleWebAuthorizationBroker.AuthorizeAsync(
             secrets,
-            Scopes(),
+            GetScopes(_access),
             "user",
             cancellationToken,
             new SecureDataStore(_options.TokenStorePath),
             new StatefulCodeReceiver()).ConfigureAwait(false);
     }
 
-    private string[] Scopes()
+    internal static string[] GetScopes(GoogleServiceAccess access)
     {
         var scopes = new List<string>();
-        if (_access.HasFlag(GoogleServiceAccess.CalendarTasks))
+        if (access.HasFlag(GoogleServiceAccess.CalendarTasks))
         {
-            scopes.Add(CalendarService.Scope.Calendar);
+            scopes.Add(CalendarService.Scope.CalendarEvents);
+            scopes.Add(CalendarService.Scope.CalendarCalendarlistReadonly);
             scopes.Add(TasksService.Scope.Tasks);
         }
-        if (_access.HasFlag(GoogleServiceAccess.Email)) scopes.Add(GmailService.Scope.GmailModify);
+        if (access.HasFlag(GoogleServiceAccess.Email)) scopes.Add(GmailService.Scope.GmailModify);
         return scopes.ToArray();
     }
 }
