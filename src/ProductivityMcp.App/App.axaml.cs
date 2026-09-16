@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using ProductivityMcp.App.Services;
 using ProductivityMcp.App.ViewModels;
 using ProductivityMcp.App.Views;
@@ -57,6 +58,9 @@ public sealed partial class App : Application
                 _mainWindow = CreateMainWindow();
                 desktop.MainWindow = _mainWindow;
             }
+
+            Program.InstanceCoordinator?.SetActivationHandler(
+                () => Dispatcher.UIThread.Post(ShowMainWindow));
         }
 
         base.OnFrameworkInitializationCompleted();

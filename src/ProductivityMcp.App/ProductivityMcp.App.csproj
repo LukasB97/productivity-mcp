@@ -20,7 +20,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ProductivityMcp.Tests" />
+    <InternalsVisibleTo Include="ProductivityMcp.SingleInstanceProbe" />
+  </ItemGroup>
 
 </Project>
