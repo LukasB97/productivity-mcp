@@ -6,6 +6,7 @@
     <ProjectReference Include="..\..\src\ProductivityMcp.Providers.Google\ProductivityMcp.Providers.Google.csproj" />
     <ProjectReference Include="..\..\src\ProductivityMcp.Server\ProductivityMcp.Server.csproj" />
     <ProjectReference Include="..\..\src\ProductivityMcp.App\ProductivityMcp.App.csproj" />
+    <ProjectReference Include="..\ProductivityMcp.SingleInstanceProbe\ProductivityMcp.SingleInstanceProbe.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -792,6 +792,12 @@
           "ProductivityMcp.Email": "[0.1.0, )",
           "ProductivityMcp.Providers.Google": "[0.1.0, )"
         }
+      },
+      "productivitymcp.singleinstanceprobe": {
+        "type": "Project",
+        "dependencies": {
+          "ProductivityMcp.App": "[0.1.1, )"
+        }
       }
     }
   }
