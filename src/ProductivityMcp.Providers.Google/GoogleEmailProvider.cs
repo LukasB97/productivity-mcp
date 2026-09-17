@@ -80,7 +80,7 @@ internal sealed class GoogleEmailProvider(
         return await GetSentMessageOrReceiptAsync(service, sent, mime, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<EmailMessage> ForwardAsync(string messageId, IReadOnlyList<string> to, IReadOnlyList<string> cc, IReadOnlyList<string> bcc, EmailBody? prefix, CancellationToken cancellationToken)
+    public async Task<EmailMessage> ForwardAsync(string messageId, IReadOnlyList<string> to, IReadOnlyList<string> cc, IReadOnlyList<string> bcc, EmailComposeBody? prefix, CancellationToken cancellationToken)
     {
         using var service = await serviceFactory.CreateGmailAsync(cancellationToken).ConfigureAwait(false);
         var raw = await GetRawAsync(service, messageId, cancellationToken).ConfigureAwait(false);
@@ -98,7 +98,7 @@ internal sealed class GoogleEmailProvider(
             prefixHtml = prefixMessage.HtmlBody ?? "";
         }
         var originalHtml = source.HtmlBody ?? $"<pre>{System.Net.WebUtility.HtmlEncode(source.TextBody ?? "")}</pre>";
-        var outgoing = new OutgoingEmail { To = to, Cc = cc, Bcc = bcc, Subject = sourceSubject.StartsWith("Fwd:", StringComparison.OrdinalIgnoreCase) ? sourceSubject : $"Fwd: {sourceSubject}", Body = new EmailBody(EmailContentFormat.Html, prefixHtml + "<br><pre>" + System.Net.WebUtility.HtmlEncode(header) + "</pre>" + originalHtml) };
+        var outgoing = new OutgoingEmail { To = to, Cc = cc, Bcc = bcc, Subject = sourceSubject.StartsWith("Fwd:", StringComparison.OrdinalIgnoreCase) ? sourceSubject : $"Fwd: {sourceSubject}", Body = new EmailComposeBody(EmailComposeFormat.Html, prefixHtml + "<br><pre>" + System.Net.WebUtility.HtmlEncode(header) + "</pre>" + originalHtml) };
         var mime = EmailContentService.Compose(account, outgoing);
         var builder = new BodyBuilder { HtmlBody = mime.HtmlBody, TextBody = mime.TextBody };
         EmailContentService.AddExistingParts(builder, source, includeAttachments: true);

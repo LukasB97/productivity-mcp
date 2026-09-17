@@ -39,7 +39,7 @@ public sealed class EmailLiveTests
             {
                 To = [account],
                 Subject = marker,
-                Body = new(EmailContentFormat.Markdown, $"# Live test\n\n{marker}"),
+                Body = new(EmailComposeFormat.Markdown, $"# Live test\n\n{marker}"),
                 Attachments = [new EmailAttachmentInput { Path = attachmentPath, Name = "live-test.txt" }],
             }));
             created.Add(sent.Id);
@@ -74,13 +74,13 @@ public sealed class EmailLiveTests
             {
                 To = [account],
                 Subject = $"Re: {marker}",
-                Body = new(EmailContentFormat.Html, $"<p>Reply {marker}</p>"),
+                Body = new(EmailComposeFormat.Html, $"<p>Reply {marker}</p>"),
                 ReplyToMessageId = sent.Id,
             }));
             created.Add(reply.Id);
 
             var forwarded = Success(await provider.ForwardAsync(
-                account, sent.Id, [account], [], [], new(EmailContentFormat.Markdown, "Forward prefix")));
+                account, sent.Id, [account], [], [], new(EmailComposeFormat.Markdown, "Forward prefix")));
             created.Add(forwarded.Id);
             var forwardedRead = Success(await provider.GetMessagesAsync(account, [forwarded.Id], EmailContentFormat.Plain, false));
             Assert.HasCount(1, forwardedRead.Single().Message!.Attachments);
@@ -93,7 +93,7 @@ public sealed class EmailLiveTests
             var updatedDraft = Success(await provider.UpdateDraftAsync(account, draft.DraftId, new EmailDraftPatch
             {
                 To = [account],
-                Body = new(EmailContentFormat.Markdown, $"Draft {marker}"),
+                Body = new(EmailComposeFormat.Markdown, $"Draft {marker}"),
             }));
             Assert.AreEqual(draft.DraftId, updatedDraft.DraftId);
             var threadedDraft = Success(await provider.GetMessagesAsync(account, [updatedDraft.MessageId], EmailContentFormat.Plain, false));

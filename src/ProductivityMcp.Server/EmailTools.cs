@@ -47,10 +47,10 @@ public sealed class EmailTools(IEmailProvider provider)
 
     [McpServerTool(Name = "email.messages.forward", Destructive = false, UseStructuredContent = true, OutputSchemaType = typeof(EmailMessage))]
     [Description("Forwards a message inline and preserves its attachments.")]
-    public async Task<CallToolResult> Forward(string account, string messageId, IReadOnlyList<string> to, IReadOnlyList<string>? cc = null, IReadOnlyList<string>? bcc = null, EmailBody? body = null, CancellationToken token = default)
+    public async Task<CallToolResult> Forward(string account, string messageId, IReadOnlyList<string> to, IReadOnlyList<string>? cc = null, IReadOnlyList<string>? bcc = null, EmailComposeBody? body = null, CancellationToken token = default)
     {
         if (!Required(account, [messageId], out var error)) return error;
-        var candidate = new OutgoingEmail { To = to, Cc = cc ?? [], Bcc = bcc ?? [], Body = body ?? new(EmailContentFormat.Html, "") };
+        var candidate = new OutgoingEmail { To = to, Cc = cc ?? [], Bcc = bcc ?? [], Body = body ?? new(EmailComposeFormat.Html, "") };
         if (!McpToolResults.TryValue(ModelValidation.Validate(candidate, "message"), out _, out error)) return error;
         return McpToolResults.FromValue(await provider.ForwardAsync(account, messageId, to, cc ?? [], bcc ?? [], body, token).ConfigureAwait(false));
     }

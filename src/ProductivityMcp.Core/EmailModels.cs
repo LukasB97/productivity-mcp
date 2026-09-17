@@ -13,6 +13,13 @@ public enum EmailContentFormat
     [JsonStringEnumMemberName("image")] Image,
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter<EmailComposeFormat>))]
+public enum EmailComposeFormat
+{
+    [JsonStringEnumMemberName("html")] Html,
+    [JsonStringEnumMemberName("markdown")] Markdown,
+}
+
 [JsonConverter(typeof(JsonStringEnumConverter<EmailMailbox>))]
 public enum EmailMailbox
 {
@@ -28,6 +35,7 @@ public sealed record EmailAccountInfo(string Account, string Provider);
 public sealed record EmailAddress(string Address, string? Name = null);
 public sealed record EmailAttachment(string AttachmentId, string Name, string MediaType, long Size);
 public sealed record EmailBody(EmailContentFormat Format, string Content);
+public sealed record EmailComposeBody(EmailComposeFormat Format, string Content);
 public sealed record EmailImage(string MediaType, byte[] Data, int Page);
 
 public sealed record EmailSummary(
@@ -112,7 +120,7 @@ public sealed record OutgoingEmail : IValidatableObject
     public IReadOnlyList<string> Cc { get; init; } = [];
     public IReadOnlyList<string> Bcc { get; init; } = [];
     public string Subject { get; init; } = "";
-    [Required] public required EmailBody Body { get; init; }
+    [Required] public required EmailComposeBody Body { get; init; }
     public IReadOnlyList<EmailAttachmentInput> Attachments { get; init; } = [];
     public string? ReplyToMessageId { get; init; }
 
@@ -120,8 +128,6 @@ public sealed record OutgoingEmail : IValidatableObject
     {
         if (To.Count + Cc.Count + Bcc.Count == 0)
             yield return new ValidationResult("at least one recipient is required.", [nameof(To)]);
-        if (Body.Format is not (EmailContentFormat.Html or EmailContentFormat.Markdown))
-            yield return new ValidationResult("body.format must be html or markdown.", [nameof(Body)]);
         var validator = new EmailAddressAttribute();
         foreach (var address in To.Concat(Cc).Concat(Bcc).Where(x => !validator.IsValid(x)))
             yield return new ValidationResult($"'{address}' is not a valid email address.", [nameof(To)]);
@@ -134,7 +140,7 @@ public sealed record EmailDraftInput : IValidatableObject
     public IReadOnlyList<string> Cc { get; init; } = [];
     public IReadOnlyList<string> Bcc { get; init; } = [];
     public string Subject { get; init; } = "";
-    public EmailBody? Body { get; init; }
+    public EmailComposeBody? Body { get; init; }
     public IReadOnlyList<EmailAttachmentInput> Attachments { get; init; } = [];
     public string? ReplyToMessageId { get; init; }
 
@@ -142,13 +148,11 @@ public sealed record EmailDraftInput : IValidatableObject
         ValidateDraftFields(To, Cc, Bcc, Body);
 
     internal static IEnumerable<ValidationResult> ValidateDraftFields(
-        IEnumerable<string>? to, IEnumerable<string>? cc, IEnumerable<string>? bcc, EmailBody? body)
+        IEnumerable<string>? to, IEnumerable<string>? cc, IEnumerable<string>? bcc, EmailComposeBody? body)
     {
         var validator = new EmailAddressAttribute();
         foreach (var address in (to ?? []).Concat(cc ?? []).Concat(bcc ?? []).Where(x => string.IsNullOrWhiteSpace(x) || !validator.IsValid(x)))
             yield return new ValidationResult($"'{address}' is not a valid email address.", [nameof(To)]);
-        if (body is not null && body.Format is not (EmailContentFormat.Html or EmailContentFormat.Markdown))
-            yield return new ValidationResult("body.format must be html or markdown.", [nameof(Body)]);
     }
 }
 
@@ -158,7 +162,7 @@ public sealed record EmailDraftPatch : IValidatableObject
     private IReadOnlyList<string>? _cc;
     private IReadOnlyList<string>? _bcc;
     private string? _subject;
-    private EmailBody? _body;
+    private EmailComposeBody? _body;
     private IReadOnlyList<EmailAttachmentInput>? _attachments;
     private string? _replyToMessageId;
 
@@ -166,7 +170,7 @@ public sealed record EmailDraftPatch : IValidatableObject
     public IReadOnlyList<string>? Cc { get => _cc; init { _cc = value; HasCc = true; } }
     public IReadOnlyList<string>? Bcc { get => _bcc; init { _bcc = value; HasBcc = true; } }
     public string? Subject { get => _subject; init { _subject = value; HasSubject = true; } }
-    public EmailBody? Body { get => _body; init { _body = value; HasBody = true; } }
+    public EmailComposeBody? Body { get => _body; init { _body = value; HasBody = true; } }
     public IReadOnlyList<EmailAttachmentInput>? Attachments { get => _attachments; init { _attachments = value; HasAttachments = true; } }
     public string? ReplyToMessageId { get => _replyToMessageId; init { _replyToMessageId = value; HasReplyToMessageId = true; } }
 
