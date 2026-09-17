@@ -7,7 +7,7 @@ public interface IEmailProvider
     Task<OperationResult<IReadOnlyList<EmailMessageReadResult>>> GetMessagesAsync(string account, IReadOnlyList<string> ids, EmailContentFormat format, bool loadRemoteImages, CancellationToken token = default);
     Task<OperationResult<IReadOnlyList<EmailThreadReadResult>>> GetThreadsAsync(string account, IReadOnlyList<string> ids, EmailContentFormat format, bool loadRemoteImages, CancellationToken token = default);
     Task<OperationResult<EmailMessage>> SendAsync(string account, OutgoingEmail message, CancellationToken token = default);
-    Task<OperationResult<EmailMessage>> ForwardAsync(string account, string id, IReadOnlyList<string> to, IReadOnlyList<string> cc, IReadOnlyList<string> bcc, EmailBody? body, CancellationToken token = default);
+    Task<OperationResult<EmailMessage>> ForwardAsync(string account, string id, IReadOnlyList<string> to, IReadOnlyList<string> cc, IReadOnlyList<string> bcc, EmailComposeBody? body, CancellationToken token = default);
     Task<OperationResult<IReadOnlyList<EmailMutationResult>>> UpdateAsync(string account, IReadOnlyList<string> ids, EmailMessagePatch patch, CancellationToken token = default);
     Task<OperationResult<IReadOnlyList<EmailMutationResult>>> ArchiveAsync(string account, IReadOnlyList<string> ids, CancellationToken token = default);
     Task<OperationResult<IReadOnlyList<EmailMutationResult>>> TrashAsync(string account, IReadOnlyList<string> ids, CancellationToken token = default);

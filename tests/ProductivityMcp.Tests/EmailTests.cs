@@ -21,6 +21,8 @@ public sealed class EmailTests
         "email.threads.get", "email.attachments.get", "email.drafts.list", "email.drafts.create",
         "email.drafts.update", "email.drafts.send", "email.labels.list", "email.labels.create",
     ];
+    private static readonly string[] ExpectedReadFormats = ["plain", "html", "markdown", "image"];
+    private static readonly string[] ExpectedComposeFormats = ["html", "markdown"];
     private static readonly JsonSerializerOptions CamelCaseJson = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -35,6 +37,23 @@ public sealed class EmailTests
             .ToArray();
 
         CollectionAssert.AreEquivalent(ExpectedToolNames, names);
+    }
+
+    [TestMethod]
+    public void EmailFormats_SeparateReadAndComposeCapabilities()
+    {
+        CollectionAssert.AreEquivalent(
+            ExpectedReadFormats,
+            Enum.GetValues<EmailContentFormat>()
+                .Select(value => JsonSerializer.Serialize(value))
+                .Select(value => value.Trim('"'))
+                .ToArray());
+        CollectionAssert.AreEquivalent(
+            ExpectedComposeFormats,
+            Enum.GetValues<EmailComposeFormat>()
+                .Select(value => JsonSerializer.Serialize(value))
+                .Select(value => value.Trim('"'))
+                .ToArray());
     }
 
     [TestMethod]
@@ -80,7 +99,7 @@ public sealed class EmailTests
             {
                 To = ["recipient@example.com"],
                 Subject = "Test",
-                Body = new(EmailContentFormat.Markdown, "# Heading\n\n[Link](https://example.com)"),
+                Body = new(EmailComposeFormat.Markdown, "# Heading\n\n[Link](https://example.com)"),
                 Attachments = [new EmailAttachmentInput { Path = path, Name = "sample.txt" }],
             });
 
@@ -168,7 +187,7 @@ public sealed class EmailTests
             var mime = EmailContentService.ComposeDraft("sender@example.com", new EmailDraftInput
             {
                 To = ["old@example.com"],
-                Body = new(EmailContentFormat.Html, "<b>Kept</b>"),
+                Body = new(EmailComposeFormat.Html, "<b>Kept</b>"),
                 Attachments = [new EmailAttachmentInput { Path = path, Name = "kept.txt" }],
             });
 
@@ -216,7 +235,7 @@ public sealed class EmailTests
 
         EmailContentService.ApplyDraftPatch(mime, new EmailDraftPatch
         {
-            Body = new EmailBody(EmailContentFormat.Html, "<p>Replacement</p>"),
+            Body = new EmailComposeBody(EmailComposeFormat.Html, "<p>Replacement</p>"),
         });
 
         Assert.AreEqual("attached.eml", mime.Attachments.OfType<MessagePart>().Single().ContentDisposition?.FileName);

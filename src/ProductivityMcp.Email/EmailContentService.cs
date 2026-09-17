@@ -32,7 +32,7 @@ public sealed class EmailContentService
         message.Subject = value.Subject;
 
         var builder = new BodyBuilder();
-        if (value.Body.Format == EmailContentFormat.Markdown)
+        if (value.Body.Format == EmailComposeFormat.Markdown)
         {
             builder.HtmlBody = Markdown.ToHtml(value.Body.Content);
             builder.TextBody = MarkdownToPlain(value.Body.Content);
@@ -314,7 +314,7 @@ public sealed class EmailContentService
             builder.LinkedResources.Add(resource);
     }
 
-    private static void ApplyBody(MimeMessage message, EmailBody? body, IEnumerable<EmailAttachmentInput> attachments)
+    private static void ApplyBody(MimeMessage message, EmailComposeBody? body, IEnumerable<EmailAttachmentInput> attachments)
     {
         var builder = new BodyBuilder();
         SetBody(builder, body);
@@ -322,16 +322,15 @@ public sealed class EmailContentService
         message.Body = builder.ToMessageBody();
     }
 
-    private static void SetBody(BodyBuilder builder, EmailBody? body)
+    private static void SetBody(BodyBuilder builder, EmailComposeBody? body)
     {
-        if (body?.Format == EmailContentFormat.Markdown)
+        if (body?.Format == EmailComposeFormat.Markdown)
         {
             builder.HtmlBody = Markdown.ToHtml(body.Content);
             builder.TextBody = MarkdownToPlain(body.Content);
         }
         else if (body is not null)
         {
-            if (body.Format != EmailContentFormat.Html) throw new UnsupportedFeatureException("body.format must be html or markdown.", "body.format");
             builder.HtmlBody = body.Content;
             builder.TextBody = HtmlToPlain(body.Content);
         }
