@@ -7,7 +7,7 @@ using Google.Apis.Calendar.v3;
 using Google.Apis.Calendar.v3.Data;
 using ProductivityMcp.Core;
 using DomainEvent = ProductivityMcp.Core.Event;
-using GoogleCalendar = Google.Apis.Calendar.v3.Data.Calendar;
+using GoogleCalendar = Google.Apis.Calendar.v3.Data.CalendarListEntry;
 using GoogleEvent = Google.Apis.Calendar.v3.Data.Event;
 
 namespace ProductivityMcp.Providers.Google;
@@ -335,7 +335,7 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
         CalendarService service,
         string calendarId,
         CancellationToken cancellationToken) =>
-        await service.Calendars.Get(calendarId)
+        await service.CalendarList.Get(calendarId)
             .ExecuteAsync(cancellationToken)
             .ConfigureAwait(false);
 

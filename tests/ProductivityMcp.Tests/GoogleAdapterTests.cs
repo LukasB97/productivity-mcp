@@ -201,7 +201,7 @@ public sealed class GoogleAdapterTests
     [TestMethod]
     public void EnsureVideoMeetingSupported_RejectsCalendarWithoutMeet()
     {
-        var calendar = new Google.Apis.Calendar.v3.Data.Calendar
+        var calendar = new CalendarListEntry
         {
             ConferenceProperties = new ConferenceProperties
             {

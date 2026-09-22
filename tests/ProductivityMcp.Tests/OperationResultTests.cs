@@ -54,6 +54,19 @@ public sealed class OperationResultTests
     }
 
     [TestMethod]
+    public void McpSuccessResult_PreservesNullsRequiredByOutputSchema()
+    {
+        OperationResult<EmailQueryResult> operation = new OperationResult<EmailQueryResult>.Success(
+            new EmailQueryResult([], [], true, null));
+
+        var result = McpToolResults.FromValue(operation);
+
+        Assert.IsTrue(result.StructuredContent.HasValue);
+        var cursor = result.StructuredContent.Value.GetProperty("cursor");
+        Assert.AreEqual(JsonValueKind.Null, cursor.ValueKind);
+    }
+
+    [TestMethod]
     public void McpEmailImageResult_EncodesImageBytesAsBase64()
     {
         byte[] pngBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];

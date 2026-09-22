@@ -461,7 +461,7 @@
           "Markdig": "[1.3.2, )",
           "Microsoft.Playwright": "[1.62.0, )",
           "MimeKit": "[4.18.0, )",
-          "ProductivityMcp.Core": "[0.1.0, )",
+          "ProductivityMcp.Core": "[0.1.1, )",
           "ReverseMarkdown": "[6.2.1, )"
         }
       },
@@ -472,10 +472,30 @@
           "Google.Apis.Gmail.v1": "[1.75.0.4225, )",
           "Google.Apis.Tasks.v1": "[1.74.0.3958, )",
           "Newtonsoft.Json": "[13.0.4, )",
-          "ProductivityMcp.Core": "[0.1.0, )",
-          "ProductivityMcp.Email": "[0.1.0, )",
+          "ProductivityMcp.Core": "[0.1.1, )",
+          "ProductivityMcp.Email": "[0.1.1, )",
           "System.Security.Cryptography.ProtectedData": "[10.0.1, )"
         }
+      }
+    },
+    "net10.0/win-x64": {
+      "System.Diagnostics.EventLog": {
+        "type": "Transitive",
+        "resolved": "10.0.12",
+        "contentHash": "sOZM+VyRj1pg/ItlHsvrSbjws6oGqZveTzTNBGZ9ziwRDyKsOF3ub6vhvOdxotCIqtlnyHAIwP5sLNvgiZC+pQ=="
+      },
+      "System.Management": {
+        "type": "Transitive",
+        "resolved": "7.0.2",
+        "contentHash": "/qEUN91mP/MUQmJnM5y5BdT7ZoPuVrtxnFlbJ8a3kBJGhe2wCzBfnPFtK2wTtEEcf3DMGR9J00GZZfg6HRI6yA==",
+        "dependencies": {
+          "System.CodeDom": "7.0.0"
+        }
+      },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "Transitive",
+        "resolved": "10.0.0",
+        "contentHash": "UPWqLSygJlFerRi9XNIuM0a1VC8gHUIufyP24xQ0sc+XimqUAEcjpOz9DhKpyDjH+5B/wO3RpC0KpkEeDj/ddg=="
       }
     }
   }

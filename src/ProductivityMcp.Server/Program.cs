@@ -10,6 +10,7 @@ using ProductivityMcp.Server;
 var options = GoogleOptions.FromEnvironment();
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Logging.ClearProviders();
 builder.Logging.AddConsole(console =>
 {
     console.LogToStandardErrorThreshold = LogLevel.Trace;

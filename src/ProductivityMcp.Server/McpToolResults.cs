@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ProductivityMcp.Core;
@@ -11,6 +12,11 @@ internal sealed record ErrorOutput(OperationError Error);
 
 internal static class McpToolResults
 {
+    private static readonly JsonSerializerOptions StructuredContentOptions = new(McpJsonUtilities.DefaultOptions)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+    };
+
     public static bool TryValue<T>(
         OperationResult<T> result,
         out T value,
@@ -87,7 +93,7 @@ internal static class McpToolResults
 
     private static CallToolResult Create<T>(T value, bool isError)
     {
-        var structuredContent = JsonSerializer.SerializeToElement(value, McpJsonUtilities.DefaultOptions);
+        var structuredContent = JsonSerializer.SerializeToElement(value, StructuredContentOptions);
         return new CallToolResult
         {
             Content = [new TextContentBlock { Text = structuredContent.GetRawText() }],
