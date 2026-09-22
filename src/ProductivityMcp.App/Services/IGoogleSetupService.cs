@@ -12,6 +12,8 @@ public interface IGoogleSetupService
 
     Task<OperationResult<ConnectionSummary>> AddAccountAsync(CancellationToken cancellationToken = default);
 
+    Task<OperationResult<ConnectionSummary>> ReconnectAsync(string accountKey, CancellationToken cancellationToken = default);
+
     Task<OperationResult<ConnectionSummary>> AddEmailAccountAsync(CancellationToken cancellationToken = default);
 
     Task<OperationResult<ConnectionSummary>> EnableEmailAsync(string accountKey, CancellationToken cancellationToken = default);
@@ -26,7 +28,8 @@ public sealed record SetupSnapshot(
     string CredentialsPath,
     bool CredentialsPresent,
     string TokenStorePath,
-    bool TokenPresent);
+    bool TokenPresent,
+    bool AccountsPresent = false);
 
 public sealed record AccountConnectionSummary(
     string Key,
@@ -36,6 +39,8 @@ public sealed record AccountConnectionSummary(
     bool CalendarTasksEnabled = true,
     bool CalendarTasksConnected = true,
     bool EmailEnabled = false,
-    bool EmailConnected = false);
+    bool EmailConnected = false,
+    OperationError? CalendarTasksError = null,
+    OperationError? EmailError = null);
 
 public sealed record ConnectionSummary(IReadOnlyList<AccountConnectionSummary> Accounts);

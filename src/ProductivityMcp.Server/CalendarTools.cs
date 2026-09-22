@@ -87,7 +87,8 @@ public sealed class CalendarTools(ICalendarProvider provider)
     public async System.Threading.Tasks.Task<CallToolResult> Update(
         [Description("Direct provider event id.")] string eventId,
         [Description("Fields to change. Null clears nullable fields.")] EventPatch patch,
-        CancellationToken cancellationToken)
+        [Description("Direct calendar id. Required when the event id exists in multiple calendars.")] string? calendarId = null,
+        CancellationToken cancellationToken = default)
     {
         if (!McpToolResults.TryValue(
                 ModelValidation.RequiredId(eventId, nameof(eventId)),
@@ -111,7 +112,7 @@ public sealed class CalendarTools(ICalendarProvider provider)
         }
 
         return McpToolResults.FromValue(
-            await provider.UpdateEventAsync(validatedEventId, validatedPatch, cancellationToken)
+            await provider.UpdateEventAsync(validatedEventId, validatedPatch, calendarId, cancellationToken)
                 .ConfigureAwait(false));
     }
 
@@ -119,7 +120,8 @@ public sealed class CalendarTools(ICalendarProvider provider)
     [Description("Deletes an event identified by its direct provider event id.")]
     public async System.Threading.Tasks.Task<CallToolResult> Delete(
         [Description("Direct provider event id.")] string eventId,
-        CancellationToken cancellationToken)
+        [Description("Direct calendar id. Required when the event id exists in multiple calendars.")] string? calendarId = null,
+        CancellationToken cancellationToken = default)
     {
         if (!McpToolResults.TryValue(
                 ModelValidation.RequiredId(eventId, nameof(eventId)),
@@ -130,7 +132,7 @@ public sealed class CalendarTools(ICalendarProvider provider)
         }
 
         return McpToolResults.FromUnit(
-            await provider.DeleteEventAsync(validatedEventId, cancellationToken).ConfigureAwait(false));
+            await provider.DeleteEventAsync(validatedEventId, calendarId, cancellationToken).ConfigureAwait(false));
     }
 
     private static CallToolResult UnsupportedVideoMeeting(string field) => McpToolResults.Error(

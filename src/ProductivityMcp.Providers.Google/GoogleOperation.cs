@@ -35,6 +35,8 @@ public static class GoogleOperation
 
     public static OperationError? Translate(Exception exception) => exception switch
     {
+        AmbiguousResourceException ambiguous => new OperationError(OperationErrorCode.Conflict, ambiguous.Message),
+        AuthenticationRequiredException authentication => new OperationError(OperationErrorCode.Authentication, authentication.Message),
         ValidationException validation => new OperationError(
             OperationErrorCode.Validation,
             validation.Message),

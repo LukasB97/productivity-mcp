@@ -1,9 +1,7 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  # Manual only: commits and pull requests never incur hosted-runner costs.
   workflow_dispatch:
 
 permissions:

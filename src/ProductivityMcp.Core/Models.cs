@@ -8,7 +8,8 @@ public sealed record CalendarInfo(
     string Name,
     string Provider,
     bool? IsDefault,
-    string? TimeZone);
+    string? TimeZone,
+    string? AccessRole = null);
 
 public sealed record Event : IValidatableObject
 {

@@ -4,241 +4,191 @@
         x:Class="ProductivityMcp.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="Productivity MCP"
-        Width="820"
-        Height="720"
-        MinWidth="680"
-        MinHeight="580"
+        Width="780" Height="760" MinWidth="520" MinHeight="440"
         WindowStartupLocation="CenterScreen"
-        Background="#F5F7FB"
+        Background="#F5F7FB" RequestedThemeVariant="Light"
         Opened="MainWindow_OnOpened">
-
   <Window.Styles>
     <Style Selector="Border.card">
-      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="#E2E5EA" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="14" />
-      <Setter Property="Padding" Value="22" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="20" />
+    </Style>
+    <Style Selector="TextBlock">
+      <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
     <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="#686D78" />
+      <Setter Property="Foreground" Value="#5B6270" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="Margin" Value="0,0,8,8" />
+      <Setter Property="Padding" Value="14,9" />
+      <Setter Property="CornerRadius" Value="6" />
     </Style>
     <Style Selector="Button.primary">
-      <Setter Property="Background" Value="#5B5BD6" />
+      <Setter Property="Background" Value="#5050C8" />
       <Setter Property="Foreground" Value="White" />
-      <Setter Property="Padding" Value="18,10" />
-      <Setter Property="CornerRadius" Value="7" />
-    </Style>
-    <Style Selector="Button.secondary">
-      <Setter Property="Background" Value="#F2F3F5" />
-      <Setter Property="BorderBrush" Value="#D9DCE1" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Padding" Value="14,8" />
-      <Setter Property="CornerRadius" Value="7" />
     </Style>
   </Window.Styles>
 
-  <ScrollViewer HorizontalContentAlignment="Center">
-    <StackPanel Margin="36,30,36,36" Spacing="20" MaxWidth="820"
-                HorizontalAlignment="Stretch">
-      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
-        <Border Width="44" Height="44" CornerRadius="11" Background="#5B5BD6">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="24" Spacing="16" MaxWidth="780" HorizontalAlignment="Stretch">
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="0,0,0,8">
+        <Border Width="44" Height="44" CornerRadius="11" Background="#5050C8">
           <TextBlock Text="P" Foreground="White" FontSize="22" FontWeight="Bold"
                      HorizontalAlignment="Center" VerticalAlignment="Center" />
         </Border>
         <StackPanel Grid.Column="1" VerticalAlignment="Center">
           <TextBlock Text="Productivity MCP" FontSize="24" FontWeight="SemiBold" />
-          <TextBlock Text="Google Calendar, Tasks &amp; E-Mail" Classes="muted" />
+          <TextBlock Text="Deine Google-Konten für deinen KI-Assistenten" Classes="muted" />
         </StackPanel>
       </Grid>
 
-      <Border Classes="card" Background="#EEF2FF" BorderBrush="#C7D2FE"
-              IsVisible="{Binding IsBusy}">
-        <StackPanel Spacing="8">
+      <Border Classes="card" IsVisible="{Binding IsBusy}">
+        <StackPanel Spacing="10">
           <ProgressBar IsIndeterminate="True" Height="4" />
-          <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" />
-          <TextBlock Text="{Binding StatusDetail}" Classes="muted" TextWrapping="Wrap" />
-          <Button Classes="secondary" Content="Abbrechen"
-                  HorizontalAlignment="Left" Command="{Binding CancelConnectionCommand}"
+          <TextBlock Text="{Binding StatusTitle}" FontSize="18" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding StatusDetail}" Classes="muted" />
+          <Button Content="Abbrechen" Command="{Binding CancelConnectionCommand}"
                   IsVisible="{Binding CanCancelConnection}" />
         </StackPanel>
       </Border>
 
+      <Border Background="#FFF7ED" BorderBrush="#FED7AA" BorderThickness="1"
+              CornerRadius="10" Padding="16" IsVisible="{Binding HasFeedback}">
+        <TextBlock Text="{Binding Feedback}" />
+      </Border>
+
       <Border Classes="card" IsVisible="{Binding NeedsCredentials}">
-        <StackPanel Spacing="14">
+        <StackPanel Spacing="12">
           <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" />
-          <TextBlock Text="{Binding StatusDetail}" Classes="muted" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding StatusDetail}" Classes="muted" />
           <Button Classes="primary" Content="OAuth-Datei auswählen …"
-                  HorizontalAlignment="Left" Click="ChooseCredentials_OnClick"
-                  IsEnabled="{Binding CanInteract}" />
+                  Click="ChooseCredentials_OnClick" IsEnabled="{Binding CanInteract}" />
         </StackPanel>
       </Border>
 
       <Border Classes="card" IsVisible="{Binding ShowConnectionAction}">
-        <StackPanel Spacing="14">
+        <StackPanel Spacing="12">
           <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" />
-          <TextBlock Text="{Binding StatusDetail}" Classes="muted" TextWrapping="Wrap" />
-          <StackPanel Orientation="Horizontal" Spacing="10">
-            <Button Classes="primary" Content="Calendar und Tasks verbinden"
-                    Command="{Binding ConnectCommand}" IsEnabled="{Binding CanInteract}" />
-            <Button Classes="secondary" Content="Nur E-Mail verbinden"
-                    Command="{Binding AddEmailAccountCommand}" IsEnabled="{Binding CanInteract}" />
-          </StackPanel>
+          <TextBlock Text="{Binding StatusDetail}" Classes="muted" />
+          <WrapPanel IsEnabled="{Binding CanInteract}">
+            <Button Classes="primary" Content="Kalender und Aufgaben verbinden" Command="{Binding ConnectCommand}" />
+            <Button Content="Nur E-Mail verbinden" Command="{Binding AddEmailAccountCommand}" />
+          </WrapPanel>
         </StackPanel>
       </Border>
 
       <StackPanel IsVisible="{Binding HasAccounts}" Spacing="16">
-        <Border Classes="card" Background="#ECFDF3" BorderBrush="#B7E4C7">
-          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-            <Border Width="34" Height="34" CornerRadius="17" Background="#16794A">
-              <TextBlock Text="✓" Foreground="White" FontSize="20" FontWeight="Bold"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" />
-            </Border>
-            <StackPanel Grid.Column="1" Spacing="3">
-              <TextBlock Text="{Binding StatusTitle}" FontSize="21" FontWeight="SemiBold" />
-              <TextBlock Text="{Binding StatusDetail}" Classes="muted" />
-            </StackPanel>
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
-                        HorizontalAlignment="Right" VerticalAlignment="Center">
-              <Button Classes="secondary" Content="Nur E-Mail-Konto hinzufügen"
-                      Command="{Binding AddEmailAccountCommand}" IsEnabled="{Binding CanInteract}" />
-              <Button Classes="primary" Content="Calendar/Tasks-Konto hinzufügen"
-                      Command="{Binding AddAccountCommand}" IsEnabled="{Binding CanInteract}" />
-            </StackPanel>
-          </Grid>
+        <StackPanel Spacing="6">
+          <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding StatusDetail}" Classes="muted" />
+          <WrapPanel IsEnabled="{Binding CanInteract}" Margin="0,6,0,0">
+            <Button Content="Kalender-/Aufgabenkonto hinzufügen" Command="{Binding AddAccountCommand}" />
+            <Button Content="E-Mail-Konto hinzufügen" Command="{Binding AddEmailAccountCommand}" />
+            <Button Content="Verbindung prüfen" Command="{Binding RefreshCommand}" />
+          </WrapPanel>
+        </StackPanel>
+
+        <Border IsVisible="{Binding IsDisconnectConfirmationVisible}" IsEnabled="{Binding CanInteract}" Background="#FFF7ED"
+                BorderBrush="#FED7AA" BorderThickness="1" CornerRadius="10" Padding="16">
+          <StackPanel Spacing="12">
+            <TextBlock Text="{Binding DisconnectAccountEmail, StringFormat='{}{0} wirklich trennen?'}" FontWeight="SemiBold" />
+            <TextBlock Text="Die lokale Anmeldung wird entfernt. Deine Daten bei Google bleiben erhalten." />
+            <WrapPanel>
+              <Button Content="Abbrechen" Command="{Binding CancelDisconnectCommand}" />
+              <Button Content="Konto trennen" Command="{Binding ConfirmDisconnectCommand}" />
+            </WrapPanel>
+          </StackPanel>
         </Border>
 
-        <ItemsControl ItemsSource="{Binding Accounts}">
+        <ItemsControl ItemsSource="{Binding Accounts}" IsEnabled="{Binding CanInteract}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:ConnectedAccountViewModel">
               <Border Classes="card" Margin="0,0,0,12">
-                <StackPanel Spacing="18">
-                  <Grid ColumnDefinitions="*,Auto">
-                    <StackPanel Spacing="3">
-                      <TextBlock Text="Google-Konto" FontSize="12" Classes="muted" />
-                      <TextBlock Text="{Binding Email}" FontSize="17" FontWeight="SemiBold" />
+                <StackPanel Spacing="12">
+                  <TextBlock Text="{Binding Email}" FontSize="18" FontWeight="SemiBold" />
+                  <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="10">
+                    <TextBlock Text="Kalender &amp; Aufgaben" />
+                    <TextBlock Grid.Column="1" Text="{Binding CalendarTasksStatusText}" Classes="muted" />
+                    <TextBlock Grid.Row="1" Text="E-Mail" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding EmailStatusText}" Classes="muted" />
+                  </Grid>
+                  <TextBlock Text="{Binding ConnectionError}" IsVisible="{Binding HasConnectionError}" Foreground="#9A3412" />
+                  <WrapPanel>
+                    <Button Classes="primary" Content="Erneut anmelden" IsVisible="{Binding NeedsReconnect}"
+                            Tag="{Binding Key}" Click="ReconnectAccount_OnClick" />
+                    <Button Content="{Binding EmailActionText}" Tag="{Binding}" Click="EmailAccount_OnClick" />
+                    <Button Content="Konto trennen" Tag="{Binding Key}" Click="DisconnectAccount_OnClick" />
+                  </WrapPanel>
+                  <Expander Header="{Binding ResourceSummary}" IsVisible="{Binding CalendarTasksEnabled}"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <StackPanel Spacing="10">
+                      <TextBlock Text="Kalender" FontWeight="SemiBold" />
+                      <ItemsControl ItemsSource="{Binding Calendars}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:ConnectedResourceViewModel">
+                            <StackPanel Margin="0,3" Spacing="2">
+                              <TextBlock Text="{Binding Name}" />
+                              <TextBlock Text="Standard" IsVisible="{Binding IsDefault}" Classes="muted" FontSize="11" />
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <TextBlock Text="Aufgabenlisten" FontWeight="SemiBold" />
+                      <ItemsControl ItemsSource="{Binding TaskLists}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:ConnectedResourceViewModel">
+                            <StackPanel Margin="0,3" Spacing="2">
+                              <TextBlock Text="{Binding Name}" />
+                              <TextBlock Text="Standard" IsVisible="{Binding IsDefault}" Classes="muted" FontSize="11" />
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
                     </StackPanel>
-                    <Button Grid.Column="1" Classes="secondary" Content="Trennen"
-                            Tag="{Binding Key}" Click="DisconnectAccount_OnClick" />
-                  </Grid>
-
-                  <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
-                    <Border Background="#F8FAFC" BorderBrush="#E2E5EA" BorderThickness="1"
-                            CornerRadius="10" Padding="16">
-                      <StackPanel Spacing="10">
-                        <TextBlock Text="Kalender" FontSize="16" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding CalendarTasksStatusText}" Classes="muted" />
-                        <ItemsControl ItemsSource="{Binding Calendars}">
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ConnectedResourceViewModel">
-                              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="0,3">
-                                <TextBlock Text="•" Foreground="#16794A" />
-                                <TextBlock Grid.Column="1" Text="{Binding Name}" TextWrapping="Wrap" />
-                                <Border Grid.Column="2" IsVisible="{Binding IsDefault}"
-                                        Background="#E7F6ED" CornerRadius="8" Padding="7,2">
-                                  <TextBlock Text="Standard" FontSize="11" Foreground="#16794A" />
-                                </Border>
-                              </Grid>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                      </StackPanel>
-                    </Border>
-
-                    <Border Grid.Column="1" Background="#F8FAFC" BorderBrush="#E2E5EA"
-                            BorderThickness="1" CornerRadius="10" Padding="16">
-                      <StackPanel Spacing="10">
-                        <TextBlock Text="Aufgabenlisten" FontSize="16" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding CalendarTasksStatusText}" Classes="muted" />
-                        <ItemsControl ItemsSource="{Binding TaskLists}">
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ConnectedResourceViewModel">
-                              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="0,3">
-                                <TextBlock Text="•" Foreground="#16794A" />
-                                <TextBlock Grid.Column="1" Text="{Binding Name}" TextWrapping="Wrap" />
-                                <Border Grid.Column="2" IsVisible="{Binding IsDefault}"
-                                        Background="#E7F6ED" CornerRadius="8" Padding="7,2">
-                                  <TextBlock Text="Standard" FontSize="11" Foreground="#16794A" />
-                                </Border>
-                              </Grid>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                      </StackPanel>
-                    </Border>
-
-                    <Border Grid.Column="2" Background="#F8FAFC" BorderBrush="#E2E5EA"
-                            BorderThickness="1" CornerRadius="10" Padding="16">
-                      <StackPanel Spacing="10">
-                        <TextBlock Text="E-Mail" FontSize="16" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding EmailStatusText}" Classes="muted" />
-                        <Button Classes="secondary" Content="{Binding EmailActionText}"
-                                Tag="{Binding}" Click="EmailAccount_OnClick" />
-                      </StackPanel>
-                    </Border>
-                  </Grid>
+                  </Expander>
                 </StackPanel>
               </Border>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-
-        <Border IsVisible="{Binding IsDisconnectConfirmationVisible}"
-                Background="#FFF7ED" BorderBrush="#FED7AA" BorderThickness="1"
-                CornerRadius="10" Padding="16">
-          <StackPanel Spacing="12">
-            <TextBlock Text="{Binding DisconnectAccountEmail, StringFormat='{}{0} wirklich trennen?'}"
-                       FontWeight="SemiBold" TextWrapping="Wrap" />
-            <StackPanel Orientation="Horizontal" Spacing="10">
-              <Button Content="Abbrechen" Command="{Binding CancelDisconnectCommand}" />
-              <Button Content="Trennen" Command="{Binding ConfirmDisconnectCommand}" />
-            </StackPanel>
-          </StackPanel>
-        </Border>
       </StackPanel>
 
-      <Border IsVisible="{Binding HasFeedback}" Background="#FFF7ED"
-              BorderBrush="#FED7AA" BorderThickness="1" CornerRadius="10" Padding="14">
-        <TextBlock Text="{Binding Feedback}" TextWrapping="Wrap" />
-      </Border>
+      <Expander Header="Einstellungen" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+        <StackPanel Spacing="16">
+          <Border Classes="card" IsVisible="{Binding IsAutostartSupported}">
+            <StackPanel Spacing="8">
+              <TextBlock Text="Beim Anmelden im Hintergrund starten" FontWeight="SemiBold" />
+              <ToggleSwitch IsChecked="{Binding StartWithSystem}" OnContent="An" OffContent="Aus"
+                            AutomationProperties.Name="Productivity MCP beim Anmelden starten" />
+              <TextBlock Text="Der KI-Client startet den MCP-Server selbst. Der Autostart gilt nur für diese Konfigurations-App."
+                         Classes="muted" />
+            </StackPanel>
+          </Border>
+          <Border Classes="card">
+            <StackPanel Spacing="10">
+              <TextBlock Text="E-Mail als Bild" FontWeight="SemiBold" />
+              <TextBlock Text="Optionaler Chromium-Download. E-Mails werden lokal dargestellt; Text, HTML und Markdown funktionieren ohne ihn."
+                         Classes="muted" />
+              <TextBlock Text="Renderer installiert" Foreground="#16794A" IsVisible="{Binding IsRendererInstalled}" />
+              <ProgressBar IsIndeterminate="True" Height="4" IsVisible="{Binding IsRendererBusy}" />
+              <Button Content="Renderer installieren" Command="{Binding InstallRendererCommand}"
+                      IsVisible="{Binding !IsRendererInstalled}" IsEnabled="{Binding !IsRendererBusy}" />
+              <Button Content="Installation abbrechen" Command="{Binding CancelRendererCommand}"
+                      IsVisible="{Binding IsRendererBusy}" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Expander>
 
-      <Border Classes="card" IsVisible="{Binding IsAutostartSupported}">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
-          <StackPanel Spacing="4">
-            <TextBlock Text="App-Start" FontSize="16" FontWeight="SemiBold" />
-            <TextBlock Text="Productivity MCP beim Anmelden im Hintergrund starten."
-                       Classes="muted" TextWrapping="Wrap" />
-          </StackPanel>
-          <ToggleSwitch Grid.Column="1" IsChecked="{Binding StartWithSystem}"
-                        OnContent="An" OffContent="Aus"
-                        VerticalAlignment="Center" />
-        </Grid>
-      </Border>
-
-      <Border Classes="card">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
-          <StackPanel Spacing="4">
-            <TextBlock Text="E-Mail als Bild" FontSize="16" FontWeight="SemiBold" />
-            <TextBlock Text="Chromium rendert E-Mails lokal und isoliert. Plain, HTML und Markdown benötigen es nicht."
-                       Classes="muted" TextWrapping="Wrap" />
-            <TextBlock Text="Installiert" Foreground="#16794A" IsVisible="{Binding IsRendererInstalled}" />
-            <ProgressBar IsIndeterminate="True" Height="4" IsVisible="{Binding IsRendererBusy}" />
-          </StackPanel>
-          <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center">
-            <Button Classes="secondary" Content="Renderer installieren"
-                    Command="{Binding InstallRendererCommand}"
-                    IsVisible="{Binding !IsRendererInstalled}" IsEnabled="{Binding !IsRendererBusy}" />
-            <Button Classes="secondary" Content="Abbrechen" Command="{Binding CancelRendererCommand}"
-                    IsVisible="{Binding IsRendererBusy}" />
-          </StackPanel>
-        </Grid>
-      </Border>
-
-      <StackPanel Orientation="Horizontal" Spacing="14" HorizontalAlignment="Center">
+      <WrapPanel HorizontalAlignment="Center">
         <HyperlinkButton Content="Website" NavigateUri="https://lukasbrueckner.com/project/productivity-mcp" />
         <HyperlinkButton Content="Datenschutz" NavigateUri="https://lukasbrueckner.com/project/productivity-mcp/datenschutz" />
         <HyperlinkButton Content="Quellcode" NavigateUri="https://github.com/LukasB97/productivity-mcp" />
-      </StackPanel>
+      </WrapPanel>
     </StackPanel>
   </ScrollViewer>
 </Window>

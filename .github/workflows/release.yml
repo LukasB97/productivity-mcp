@@ -1,8 +1,7 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  # Manual only. Publishing requires an explicit maintainer decision.
   workflow_dispatch:
     inputs:
       tag:
@@ -10,7 +9,7 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   package:
@@ -53,13 +52,7 @@ jobs:
       - name: Test
         run: dotnet test --project tests/ProductivityMcp.Tests/ProductivityMcp.Tests.csproj --configuration Release --no-build --no-restore --filter "TestCategory!=Live"
 
-      - name: Publish applications
-        shell: pwsh
-        run: |
-          dotnet publish src/ProductivityMcp.App -c Release -r "${{ matrix.rid }}" --self-contained true -p:RestoreLockedMode=false -o "stage/ProductivityMcp/app"
-          dotnet publish src/ProductivityMcp.Server -c Release -r "${{ matrix.rid }}" --self-contained true -p:RestoreLockedMode=false -o "stage/ProductivityMcp/server"
-
-      - name: Add official OAuth desktop client
+      - name: Package with official OAuth desktop client
         shell: pwsh
         env:
           OAUTH_CLIENT_JSON_BASE64: ${{ secrets.GOOGLE_OAUTH_CLIENT_JSON_BASE64 }}
@@ -68,18 +61,20 @@ jobs:
             throw "GOOGLE_OAUTH_CLIENT_JSON_BASE64 is required for official releases."
           }
           $bytes = [Convert]::FromBase64String($env:OAUTH_CLIENT_JSON_BASE64)
-          [IO.File]::WriteAllBytes("stage/ProductivityMcp/app/google-oauth-client.json", $bytes)
-          [IO.File]::WriteAllBytes("stage/ProductivityMcp/server/google-oauth-client.json", $bytes)
+          $clientPath = Join-Path $env:RUNNER_TEMP 'google-oauth-client.json'
+          try {
+            [IO.File]::WriteAllBytes($clientPath, $bytes)
+            ./scripts/package.ps1 -Runtime '${{ matrix.rid }}' -OAuthClientPath $clientPath
+          } finally {
+            Remove-Item -LiteralPath $clientPath -ErrorAction SilentlyContinue
+          }
 
-      - name: Create archive
+      - name: Collect archive
         shell: pwsh
         run: |
-          $name = "productivity-mcp-${{ matrix.rid }}"
-          if ("${{ runner.os }}" -eq "Windows") {
-            Compress-Archive -Path "stage/ProductivityMcp" -DestinationPath "$name.zip"
-          } else {
-            tar -czf "$name.tar.gz" -C stage ProductivityMcp
-          }
+          $archives = @(Get-ChildItem artifacts/packages -Recurse -File -Filter 'productivity-mcp-${{ matrix.rid }}.*')
+          if ($archives.Count -ne 1) { throw 'Expected exactly one release archive.' }
+          Copy-Item -LiteralPath $archives[0].FullName -Destination .
 
       - name: Upload package
         uses: actions/upload-artifact@v6
@@ -92,6 +87,8 @@ jobs:
     name: Publish GitHub release
     needs: package
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v6

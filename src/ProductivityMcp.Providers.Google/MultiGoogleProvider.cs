@@ -4,9 +4,24 @@ using DomainTask = ProductivityMcp.Core.Task;
 
 namespace ProductivityMcp.Providers.Google;
 
-public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvider, ITasksProvider
+public sealed class MultiGoogleProvider : ICalendarProvider, ITasksProvider
 {
-    private readonly GoogleAccountCatalog _accounts = new(options);
+    private readonly GoogleAccountCatalog _accounts;
+    private readonly Func<GoogleCalendarProvider[]> _calendarProviders;
+
+    public MultiGoogleProvider(GoogleOptions options)
+    {
+        _accounts = new(options);
+        _calendarProviders = () => _accounts.List()
+            .Where(account => account.CalendarTasksEnabled)
+            .Select(account => new GoogleCalendarProvider(new GoogleServiceFactory(_accounts.OptionsFor(account.Key))))
+            .ToArray();
+    }
+
+    internal MultiGoogleProvider(GoogleOptions options, Func<GoogleCalendarProvider[]> calendarProviders) : this(options)
+    {
+        _calendarProviders = calendarProviders;
+    }
 
     public CalendarProviderCapabilities Capabilities { get; } = new(NativeVideoMeetings: true);
 
@@ -40,9 +55,9 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
         {
             var resolved = await ResolveCalendarProviderAsync(query.CalendarId, cancellationToken)
                 .ConfigureAwait(false);
-            return resolved is null
-                ? NotFound<IReadOnlyList<CalendarEvent>>("calendar", query.CalendarId)
-                : await resolved.QueryEventsAsync(query, cancellationToken).ConfigureAwait(false);
+            return resolved is OperationResult<GoogleCalendarProvider>.Failure failure
+                ? OperationResult.Fail<IReadOnlyList<CalendarEvent>>(failure.Error)
+                : await ((OperationResult<GoogleCalendarProvider>.Success)resolved).Value.QueryEventsAsync(query, cancellationToken).ConfigureAwait(false);
         }
 
         var providers = CalendarProviders();
@@ -58,6 +73,9 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
             }
 
             events.AddRange(((OperationResult<IReadOnlyList<CalendarEvent>>.Success)result).Value);
+            if (events.DistinctBy(item => (item.CalendarId, item.Id)).Take(5001).Count() > 5000)
+                return OperationResult.Fail<IReadOnlyList<CalendarEvent>>(new(OperationErrorCode.Validation,
+                    "The query exceeds 5000 events. Narrow the calendar or time range; no partial result was returned."));
         }
 
         return OperationResult.Ok<IReadOnlyList<CalendarEvent>>(
@@ -69,28 +87,28 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
         DomainEvent @event,
         CancellationToken cancellationToken = default)
     {
-        var provider = await ResolveCalendarProviderAsync(calendarId, cancellationToken).ConfigureAwait(false);
-        return provider is null
-            ? NotFound<CalendarEvent>("calendar", calendarId)
-            : await provider.CreateEventAsync(calendarId, @event, cancellationToken).ConfigureAwait(false);
+        var provider = await ResolveCalendarProviderAsync(calendarId, cancellationToken, requireWrite: true).ConfigureAwait(false);
+        return provider is OperationResult<GoogleCalendarProvider>.Failure failure
+            ? OperationResult.Fail<CalendarEvent>(failure.Error)
+            : await ((OperationResult<GoogleCalendarProvider>.Success)provider).Value.CreateEventAsync(calendarId, @event, cancellationToken).ConfigureAwait(false);
     }
 
     public System.Threading.Tasks.Task<OperationResult<CalendarEvent>> UpdateEventAsync(
         string eventId,
         EventPatch patch,
+        string? calendarId = null,
         CancellationToken cancellationToken = default) =>
-        TryCalendarAccountsAsync(
-            provider => provider.UpdateEventAsync(eventId, patch, cancellationToken),
-            "event",
-            eventId);
+        MutateEventAsync(eventId, calendarId,
+            (provider, resolvedCalendarId) => provider.UpdateEventAsync(eventId, patch, resolvedCalendarId, cancellationToken),
+            cancellationToken);
 
     public System.Threading.Tasks.Task<OperationResult<Unit>> DeleteEventAsync(
         string eventId,
+        string? calendarId = null,
         CancellationToken cancellationToken = default) =>
-        TryCalendarAccountsAsync(
-            provider => provider.DeleteEventAsync(eventId, cancellationToken),
-            "event",
-            eventId);
+        MutateEventAsync(eventId, calendarId,
+            (provider, resolvedCalendarId) => provider.DeleteEventAsync(eventId, resolvedCalendarId, cancellationToken),
+            cancellationToken);
 
     public async System.Threading.Tasks.Task<OperationResult<IReadOnlyList<TaskListInfo>>> ListTaskListsAsync(
         CancellationToken cancellationToken = default)
@@ -160,31 +178,41 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
             "task",
             taskId);
 
-    private GoogleCalendarProvider[] CalendarProviders() => _accounts.List()
-        .Where(account => account.CalendarTasksEnabled)
-        .Select(account => new GoogleCalendarProvider(new GoogleServiceFactory(_accounts.OptionsFor(account.Key))))
-        .ToArray();
+    private GoogleCalendarProvider[] CalendarProviders() => _calendarProviders();
 
     private GoogleTasksProvider[] TaskProviders() => _accounts.List()
         .Where(account => account.CalendarTasksEnabled)
         .Select(account => new GoogleTasksProvider(new GoogleServiceFactory(_accounts.OptionsFor(account.Key))))
         .ToArray();
 
-    private async System.Threading.Tasks.Task<GoogleCalendarProvider?> ResolveCalendarProviderAsync(
+    private async System.Threading.Tasks.Task<OperationResult<GoogleCalendarProvider>> ResolveCalendarProviderAsync(
         string calendarId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireWrite = false)
     {
-        foreach (var provider in CalendarProviders())
+        var providers = CalendarProviders();
+        if (providers.Length == 0) return NoAccounts<GoogleCalendarProvider>();
+        OperationError? error = null;
+        var foundReadOnly = false;
+        foreach (var provider in providers)
         {
             var result = await provider.ListAsync(cancellationToken).ConfigureAwait(false);
-            if (result is OperationResult<IReadOnlyList<CalendarInfo>>.Success success &&
-                success.Value.Any(calendar => calendar.Id == calendarId))
+            if (result is OperationResult<IReadOnlyList<CalendarInfo>>.Failure failure)
             {
-                return provider;
+                error ??= failure.Error;
+                continue;
+            }
+            var calendar = ((OperationResult<IReadOnlyList<CalendarInfo>>.Success)result).Value.FirstOrDefault(calendar => calendar.Id == calendarId);
+            if (calendar is not null)
+            {
+                if (!requireWrite || CanWrite(calendar)) return OperationResult.Ok(provider);
+                foundReadOnly = true;
             }
         }
-
-        return null;
+        if (error is not null) return OperationResult.Fail<GoogleCalendarProvider>(error);
+        return foundReadOnly
+            ? OperationResult.Fail<GoogleCalendarProvider>(new(OperationErrorCode.PermissionDenied, "None of the connected accounts has write access to this calendar."))
+            : NotFound<GoogleCalendarProvider>("calendar", calendarId);
     }
 
     private async System.Threading.Tasks.Task<GoogleTasksProvider?> ResolveTaskProviderAsync(
@@ -204,23 +232,53 @@ public sealed class MultiGoogleProvider(GoogleOptions options) : ICalendarProvid
         return null;
     }
 
-    private async System.Threading.Tasks.Task<OperationResult<T>> TryCalendarAccountsAsync<T>(
-        Func<GoogleCalendarProvider, System.Threading.Tasks.Task<OperationResult<T>>> operation,
-        string resource,
-        string id)
+    private async System.Threading.Tasks.Task<OperationResult<T>> MutateEventAsync<T>(
+        string eventId,
+        string? calendarId,
+        Func<GoogleCalendarProvider, string, System.Threading.Tasks.Task<OperationResult<T>>> operation,
+        CancellationToken cancellationToken)
     {
         var providers = CalendarProviders();
         if (providers.Length == 0) return NoAccounts<T>();
+        if (calendarId is not null && string.IsNullOrWhiteSpace(calendarId))
+            return OperationResult.Fail<T>(new OperationError(OperationErrorCode.Validation, "calendarId must not be empty.", "calendarId"));
 
-        foreach (var provider in providers)
+        if (calendarId is not null)
         {
-            var result = await operation(provider).ConfigureAwait(false);
-            if (result is OperationResult<T>.Success) return result;
-            if (((OperationResult<T>.Failure)result).Error.Code != OperationErrorCode.NotFound) return result;
+            var resolved = await ResolveCalendarProviderAsync(calendarId, cancellationToken, requireWrite: true).ConfigureAwait(false);
+            return resolved is OperationResult<GoogleCalendarProvider>.Failure failure
+                ? OperationResult.Fail<T>(failure.Error)
+                : await operation(((OperationResult<GoogleCalendarProvider>.Success)resolved).Value, calendarId).ConfigureAwait(false);
         }
 
-        return NotFound<T>(resource, id);
+        // Resolve every account before issuing any write. Provider event ids are only
+        // unique inside a calendar, and shared calendars can appear in several accounts.
+        var matches = new List<(GoogleCalendarProvider Provider, CalendarInfo Calendar)>();
+        foreach (var provider in providers)
+        {
+            var listed = await provider.ListAsync(cancellationToken).ConfigureAwait(false);
+            if (listed is OperationResult<IReadOnlyList<CalendarInfo>>.Failure listFailure)
+                return OperationResult.Fail<T>(listFailure.Error);
+            foreach (var calendar in ((OperationResult<IReadOnlyList<CalendarInfo>>.Success)listed).Value)
+            {
+                var result = await provider.GetEventAsync(calendar.Id, eventId, cancellationToken).ConfigureAwait(false);
+                if (result is OperationResult<CalendarEvent>.Success) matches.Add((provider, calendar));
+                else if (result is OperationResult<CalendarEvent>.Failure failure && failure.Error.Code != OperationErrorCode.NotFound)
+                    return OperationResult.Fail<T>(failure.Error);
+            }
+        }
+        if (matches.Count == 0) return NotFound<T>("event", eventId);
+        if (matches.Select(match => match.Calendar.Id).Distinct(StringComparer.Ordinal).Skip(1).Any())
+            return OperationResult.Fail<T>(new OperationError(OperationErrorCode.Conflict,
+                "The event id exists in multiple calendars. Supply calendarId; nothing was changed.", "calendarId"));
+        var writable = matches.FirstOrDefault(match => CanWrite(match.Calendar));
+        if (writable.Provider is null)
+            return OperationResult.Fail<T>(new OperationError(OperationErrorCode.PermissionDenied,
+                "None of the connected accounts has write access to this calendar."));
+        return await operation(writable.Provider, writable.Calendar.Id).ConfigureAwait(false);
     }
+
+    private static bool CanWrite(CalendarInfo calendar) => calendar.AccessRole is "owner" or "writer" or "writerWithoutPrivateAccess";
 
     private async System.Threading.Tasks.Task<OperationResult<T>> TryTaskAccountsAsync<T>(
         Func<GoogleTasksProvider, System.Threading.Tasks.Task<OperationResult<T>>> operation,

@@ -47,7 +47,8 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
                 calendar.SummaryOverride ?? calendar.Summary ?? calendar.Id,
                 "google",
                 calendar.Primary ?? false,
-                calendar.TimeZone)));
+                calendar.TimeZone,
+                calendar.AccessRole)));
 
             pageToken = page.NextPageToken;
         }
@@ -95,6 +96,7 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
             do
             {
                 var request = service.Events.List(calendar.Id);
+                request.MaxResults = 250;
                 request.PageToken = pageToken;
                 request.SingleEvents = true;
                 request.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
@@ -108,6 +110,10 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
                     MapEvent(calendar.Id, item),
                     GoogleTemporal.GetSortKey(item.Start, calendar.TimeZone))));
                 pageToken = page.NextPageToken;
+                if (result.Count > 5000 || (result.Count == 5000 && pageToken is not null))
+                {
+                    throw new ValidationException("The query exceeds 5000 events. Narrow the calendar or time range; no partial result was returned.");
+                }
             }
             while (pageToken is not null);
         }
@@ -149,16 +155,18 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
     public System.Threading.Tasks.Task<OperationResult<CalendarEvent>> UpdateEventAsync(
         string eventId,
         EventPatch patch,
+        string? calendarId = null,
         CancellationToken cancellationToken = default) =>
-        GoogleOperation.ExecuteAsync(() => UpdateEventCoreAsync(eventId, patch, cancellationToken));
+        GoogleOperation.ExecuteAsync(() => UpdateEventCoreAsync(eventId, patch, calendarId, cancellationToken));
 
     private async System.Threading.Tasks.Task<CalendarEvent> UpdateEventCoreAsync(
         string eventId,
         EventPatch patch,
-        CancellationToken cancellationToken = default)
+        string? calendarId,
+        CancellationToken cancellationToken)
     {
         using var service = await serviceFactory.CreateCalendarAsync(cancellationToken).ConfigureAwait(false);
-        var located = await FindEventAsync(service, eventId, cancellationToken).ConfigureAwait(false);
+        var located = await FindEventAsync(service, eventId, calendarId, cancellationToken).ConfigureAwait(false);
         var calendar = await GetCalendarAsync(service, located.CalendarId, cancellationToken).ConfigureAwait(false);
         var calendarTimeZone = GetCalendarTimeZone(calendar);
         if (patch.HasVideoMeeting && patch.VideoMeeting)
@@ -182,15 +190,17 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
 
     public System.Threading.Tasks.Task<OperationResult<Unit>> DeleteEventAsync(
         string eventId,
+        string? calendarId = null,
         CancellationToken cancellationToken = default) =>
-        GoogleOperation.ExecuteAsync(() => DeleteEventCoreAsync(eventId, cancellationToken));
+        GoogleOperation.ExecuteAsync(() => DeleteEventCoreAsync(eventId, calendarId, cancellationToken));
 
     private async System.Threading.Tasks.Task<Unit> DeleteEventCoreAsync(
         string eventId,
-        CancellationToken cancellationToken = default)
+        string? calendarId,
+        CancellationToken cancellationToken)
     {
         using var service = await serviceFactory.CreateCalendarAsync(cancellationToken).ConfigureAwait(false);
-        var located = await FindEventAsync(service, eventId, cancellationToken).ConfigureAwait(false);
+        var located = await FindEventAsync(service, eventId, calendarId, cancellationToken).ConfigureAwait(false);
         var request = service.Events.Delete(located.CalendarId, eventId);
         request.SendUpdates = EventsResource.DeleteRequest.SendUpdatesEnum.All;
         await request.ExecuteAsync(cancellationToken)
@@ -198,11 +208,26 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
         return default;
     }
 
+    internal System.Threading.Tasks.Task<OperationResult<CalendarEvent>> GetEventAsync(
+        string calendarId, string eventId, CancellationToken cancellationToken) =>
+        GoogleOperation.ExecuteAsync(async () =>
+        {
+            using var service = await serviceFactory.CreateCalendarAsync(cancellationToken).ConfigureAwait(false);
+            var item = await service.Events.Get(calendarId, eventId).ExecuteAsync(cancellationToken).ConfigureAwait(false);
+            return MapEvent(calendarId, item);
+        });
+
     private static async System.Threading.Tasks.Task<(string CalendarId, GoogleEvent Event)> FindEventAsync(
         CalendarService service,
         string eventId,
+        string? calendarId,
         CancellationToken cancellationToken)
     {
+        if (calendarId is not null)
+        {
+            var item = await service.Events.Get(calendarId, eventId).ExecuteAsync(cancellationToken).ConfigureAwait(false);
+            return (calendarId, item);
+        }
         (string CalendarId, GoogleEvent Event)? found = null;
 
         foreach (var calendar in await ListCalendarsAsync(service, cancellationToken).ConfigureAwait(false))
@@ -215,8 +240,8 @@ public sealed class GoogleCalendarProvider(GoogleServiceFactory serviceFactory) 
 
                 if (found is not null)
                 {
-                    throw new InvalidOperationException(
-                        $"Event id '{eventId}' exists in more than one calendar.");
+                    throw new AmbiguousResourceException(
+                        $"Event id '{eventId}' exists in more than one calendar. Supply calendarId; nothing was changed.");
                 }
 
                 found = (calendar.Id, item);

@@ -17,11 +17,24 @@ public sealed record ConnectedAccountViewModel(
     bool CalendarTasksEnabled,
     bool CalendarTasksConnected,
     bool EmailEnabled,
-    bool EmailConnected)
+    bool EmailConnected,
+    OperationError? CalendarTasksError = null,
+    OperationError? EmailError = null)
 {
     public string EmailActionText => EmailEnabled ? "E-Mail deaktivieren" : "E-Mail verbinden";
-    public string EmailStatusText => EmailConnected ? "Verbunden" : EmailEnabled ? "Erneut anmelden" : "Deaktiviert";
-    public string CalendarTasksStatusText => CalendarTasksConnected ? "Verbunden" : CalendarTasksEnabled ? "Erneut anmelden" : "Deaktiviert";
+    public string EmailStatusText => Status(EmailEnabled, EmailConnected, EmailError);
+    public string CalendarTasksStatusText => Status(CalendarTasksEnabled, CalendarTasksConnected, CalendarTasksError);
+    public bool NeedsReconnect => NeedsSignIn(CalendarTasksError) || NeedsSignIn(EmailError)
+        || (CalendarTasksEnabled && !CalendarTasksConnected && CalendarTasksError is null)
+        || (EmailEnabled && !EmailConnected && EmailError is null);
+    public bool HasConnectionError => CalendarTasksError is not null || EmailError is not null;
+    public string ConnectionError => string.Join("\n", new[] { CalendarTasksError?.Message, EmailError?.Message }
+        .Where(message => !string.IsNullOrWhiteSpace(message)).Distinct());
+    public string ResourceSummary => $"{Calendars.Count} Kalender · {TaskLists.Count} Aufgabenlisten";
+
+    private static bool NeedsSignIn(OperationError? error) => error?.Code is OperationErrorCode.Authentication or OperationErrorCode.PermissionDenied;
+    private static string Status(bool enabled, bool connected, OperationError? error) => !enabled ? "Deaktiviert"
+        : connected ? "Verbunden" : error is null || NeedsSignIn(error) ? "Erneut anmelden" : "Prüfung fehlgeschlagen";
 }
 
 public sealed partial class MainWindowViewModel : ObservableObject
@@ -42,7 +55,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private string _statusDetail = "Verbinde dein Google-Konto einmalig.";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDisconnectedServices))]
     private IReadOnlyList<ConnectedAccountViewModel> _accounts = [];
+
+    public bool HasDisconnectedServices => Accounts.Any(account =>
+        (account.CalendarTasksEnabled && !account.CalendarTasksConnected) || (account.EmailEnabled && !account.EmailConnected));
 
     [ObservableProperty]
     private string _connectionActionText = "Mit Google anmelden";
@@ -139,7 +156,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _initialized = true;
         var snapshot = _setupService.Inspect();
         ApplyLocalState(snapshot);
-        if (snapshot.CredentialsPresent && snapshot.TokenPresent)
+        if (snapshot.CredentialsPresent && (snapshot.TokenPresent || snapshot.AccountsPresent))
         {
             await VerifyConnectionAsync(showBrowserMessage: false);
         }
@@ -166,7 +183,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private AsyncTask ConnectAsync() => VerifyConnectionAsync(showBrowserMessage: true);
+    private AsyncTask ConnectAsync() => AddAccountAsync();
+
+    [RelayCommand]
+    private AsyncTask RefreshAsync() => VerifyConnectionAsync(showBrowserMessage: false);
+
+    public AsyncTask ReconnectAsync(string accountKey) => RunConnectionAsync(
+        "Google-Konto erneut verbinden …",
+        "Bestätige im Browser die Berechtigungen. Bis dahin bleibt die bisherige Anmeldung erhalten.",
+        cancellationToken => _setupService.ReconnectAsync(accountKey, cancellationToken));
 
     [RelayCommand]
     private async AsyncTask AddAccountAsync()
@@ -253,6 +278,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public void RequestDisconnect(string accountKey)
     {
+        if (!CanInteract) return;
         var account = Accounts.FirstOrDefault(item => item.Key == accountKey);
         if (account is null)
         {
@@ -275,7 +301,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private async AsyncTask ConfirmDisconnectAsync()
     {
-        if (_disconnectAccountKey is null)
+        if (!CanInteract || _disconnectAccountKey is null)
         {
             return;
         }
@@ -286,7 +312,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var result = _setupService.Disconnect(accountKey);
         switch (result)
         {
-            case OperationResult<SetupSnapshot>.Success success when success.Value.TokenPresent:
+            case OperationResult<SetupSnapshot>.Success success when success.Value.TokenPresent || success.Value.AccountsPresent:
                 await VerifyConnectionAsync(showBrowserMessage: false);
                 break;
             case OperationResult<SetupSnapshot>.Success success:
@@ -303,9 +329,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private AsyncTask VerifyConnectionAsync(bool showBrowserMessage) => RunConnectionAsync(
         "Verbindung wird geprüft …",
-        showBrowserMessage
-            ? "Falls nötig, öffnet sich gleich die Google-Anmeldung im Browser."
-            : "Konten, Kalender und Aufgabenlisten werden kurz geprüft.",
+        "Konten und aktivierte Dienste werden geprüft. Es wird keine Anmeldung gestartet.",
         cancellationToken => _setupService.ConnectAsync(cancellationToken));
 
     private async AsyncTask RunConnectionAsync(
@@ -319,6 +343,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         var previousState = CaptureUiState();
+        CancelDisconnect();
         using var cancellation = new CancellationTokenSource();
         _connectionCancellation = cancellation;
 
@@ -437,14 +462,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
             account.CalendarTasksEnabled,
             account.CalendarTasksConnected,
             account.EmailEnabled,
-            account.EmailConnected)).ToArray();
+            account.EmailConnected,
+            account.CalendarTasksError,
+            account.EmailError)).ToArray();
 
         HasAccounts = Accounts.Count > 0;
         IsConnected = Accounts.Any(account => account.CalendarTasksConnected || account.EmailConnected);
         NeedsCredentials = false;
         ShowConnectionAction = false;
         StatusTitle = Accounts.Count == 1 ? "1 Google-Konto konfiguriert" : $"{Accounts.Count} Google-Konten konfiguriert";
-        StatusDetail = IsConnected ? "Aktivierte Google-Dienste sind einsatzbereit." : "Für diese Konten ist derzeit kein Dienst verbunden.";
+        StatusDetail = HasDisconnectedServices ? "Nicht alle aktivierten Dienste sind verbunden. Details stehen beim jeweiligen Konto."
+            : IsConnected ? "Aktivierte Google-Dienste sind einsatzbereit." : "Für diese Konten ist derzeit kein Dienst verbunden.";
         HasFeedback = false;
         IsFeedbackError = false;
         Feedback = "";
@@ -457,7 +485,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ShowConnectionAction = !HasAccounts;
         ConnectionActionText = "Erneut mit Google anmelden";
         StatusTitle = "Verbindung nicht verfügbar";
-        StatusDetail = "Melde dich erneut an, um Calendar und Tasks zu verbinden.";
+        StatusDetail = "Die Änderung konnte nicht abgeschlossen werden. Bestehende Konten bleiben erhalten.";
         ShowError(message);
     }
 

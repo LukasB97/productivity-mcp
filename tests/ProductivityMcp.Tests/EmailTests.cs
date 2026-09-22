@@ -130,6 +130,7 @@ public sealed class EmailTests
     }
 
     [TestMethod]
+    [TestCategory("Renderer")]
     public async System.Threading.Tasks.Task MimeContent_ImageSplitsLongMailIntoOrderedPages()
     {
         Assert.IsTrue(EmailContentService.IsRendererInstalled(), "CI must install Playwright Chromium before running tests.");
@@ -144,9 +145,12 @@ public sealed class EmailTests
         Assert.IsGreaterThanOrEqualTo(3, rendered.Images.Count);
         CollectionAssert.AreEqual(Enumerable.Range(1, rendered.Images.Count).ToArray(), rendered.Images.Select(x => x.Page).ToArray());
         Assert.IsTrue(rendered.Images.All(x => x.MediaType == "image/png" && x.Data.Length > 0));
+        var lastHeight = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(rendered.Images[^1].Data.AsSpan(20, 4));
+        Assert.IsLessThan(1200, lastHeight, "The last image must not repeat the preceding page's content.");
     }
 
     [TestMethod]
+    [TestCategory("Renderer")]
     public async System.Threading.Tasks.Task MimeContent_BlocksLocalNetworkImagesEvenWhenRemoteLoadingIsEnabled()
     {
         Assert.IsTrue(EmailContentService.IsRendererInstalled(), "CI must install Playwright Chromium before running tests.");
@@ -160,6 +164,15 @@ public sealed class EmailTests
 
         Assert.HasCount(1, rendered.Images);
         Assert.IsGreaterThan(0, rendered.Images[0].Data.Length);
+    }
+
+    [TestMethod]
+    [TestCategory("Renderer")]
+    public async System.Threading.Tasks.Task MimeContent_RejectsExcessiveImagePages()
+    {
+        var mime = new MimeMessage { Body = new TextPart("html") { Text = "<div style='height:25000px'>Too long</div>" } };
+        await Assert.ThrowsExactlyAsync<UnsupportedFeatureException>(() =>
+            new EmailContentService().ConvertAsync(mime, EmailContentFormat.Image, false, CancellationToken.None));
     }
 
     [TestMethod]

@@ -16,18 +16,18 @@ public sealed class EmailLiveTests
             Assert.Inconclusive("Set PRODUCTIVITY_MCP_LIVE_TESTS=1 to run the opt-in Gmail test.");
 
         var options = GoogleOptions.FromEnvironment();
-        var setup = new GoogleSetupService(options);
+        var account = Environment.GetEnvironmentVariable("PRODUCTIVITY_MCP_LIVE_ACCOUNT");
+        if (string.IsNullOrWhiteSpace(account))
+            Assert.Inconclusive("Set PRODUCTIVITY_MCP_LIVE_ACCOUNT to an explicitly authorized test mailbox. Tests only send to that same address.");
         var catalog = new GoogleAccountCatalog(options);
         var registration = catalog.List().Single(x =>
-            string.Equals(x.Email, "lukas.brueckner97@gmail.com", StringComparison.OrdinalIgnoreCase));
+            string.Equals(x.Email, account, StringComparison.OrdinalIgnoreCase));
         if (!registration.EmailEnabled || !catalog.HasEmailToken(registration.Key))
         {
-            var authorization = await setup.EnableEmailAsync(registration.Key);
-            _ = Success(authorization);
+            Assert.Inconclusive("Connect this account with E-Mail enabled in the configuration app before running live tests.");
         }
 
         var provider = new MultiGoogleEmailProvider(options, new EmailContentService());
-        const string account = "lukas.brueckner97@gmail.com";
         var marker = $"[productivity-mcp-live-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}]";
         var attachmentPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.txt");
         string? downloadedPath = null;

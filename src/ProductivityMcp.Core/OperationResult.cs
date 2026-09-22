@@ -43,6 +43,10 @@ public sealed class UnsupportedFeatureException(
     public string? Field { get; } = field;
 }
 
+public sealed class AmbiguousResourceException(string message) : Exception(message);
+
+public sealed class AuthenticationRequiredException(string message) : Exception(message);
+
 public sealed class ConfigurationException(
     string message,
     string? field = null,

@@ -84,7 +84,7 @@ public sealed class ConfigurationAppTests
         var service = new FakeSetupService();
         var viewModel = new MainWindowViewModel(service);
 
-        await viewModel.ConnectCommand.ExecuteAsync(null);
+        await viewModel.RefreshCommand.ExecuteAsync(null);
 
         Assert.IsTrue(viewModel.IsConnected);
         Assert.HasCount(1, viewModel.Accounts);
@@ -196,6 +196,26 @@ public sealed class ConfigurationAppTests
         Assert.IsFalse(viewModel.IsFeedbackError);
     }
 
+    [TestMethod]
+    public async System.Threading.Tasks.Task ViewModel_NewConnectionInvalidatesPendingDisconnectConfirmation()
+    {
+        var service = new FakeSetupService(connected: true, blockAddAccount: true);
+        var viewModel = new MainWindowViewModel(service);
+        await viewModel.InitializeAsync();
+        viewModel.RequestDisconnect(viewModel.Accounts[0].Key);
+        Assert.IsTrue(viewModel.IsDisconnectConfirmationVisible);
+        var connecting = viewModel.AddAccountCommand.ExecuteAsync(null);
+        await service.AddAccountStarted;
+
+        await viewModel.ConfirmDisconnectCommand.ExecuteAsync(null);
+
+        Assert.AreEqual(0, service.DisconnectCalls);
+        Assert.IsFalse(viewModel.IsDisconnectConfirmationVisible);
+        viewModel.CancelConnectionCommand.Execute(null);
+        await connecting;
+        Assert.IsTrue(viewModel.IsConnected);
+    }
+
     private sealed class FakeAutostartService(bool enabled) : IAutostartService
     {
         public bool Enabled { get; private set; } = enabled;
@@ -227,6 +247,7 @@ public sealed class ConfigurationAppTests
         }
 
         public int ConnectCalls { get; private set; }
+        public int DisconnectCalls { get; private set; }
 
         public System.Threading.Tasks.Task AddAccountStarted => _addAccountStarted.Task;
 
@@ -266,6 +287,9 @@ public sealed class ConfigurationAppTests
             CancellationToken cancellationToken = default) =>
             System.Threading.Tasks.Task.FromResult<OperationResult<ConnectionSummary>>(OperationResult.Ok(Summary()));
 
+        public System.Threading.Tasks.Task<OperationResult<ConnectionSummary>> ReconnectAsync(
+            string accountKey, CancellationToken cancellationToken = default) => ConnectAsync(cancellationToken);
+
         public System.Threading.Tasks.Task<OperationResult<ConnectionSummary>> EnableEmailAsync(
             string accountKey, CancellationToken cancellationToken = default) =>
             System.Threading.Tasks.Task.FromResult<OperationResult<ConnectionSummary>>(OperationResult.Ok(Summary()));
@@ -276,6 +300,7 @@ public sealed class ConfigurationAppTests
 
         public OperationResult<SetupSnapshot> Disconnect(string accountKey)
         {
+            DisconnectCalls++;
             _connected = false;
             return OperationResult.Ok(Inspect());
         }

@@ -9,8 +9,8 @@ public interface ICalendarProvider
     System.Threading.Tasks.Task<OperationResult<IReadOnlyList<CalendarInfo>>> ListAsync(CancellationToken cancellationToken = default);
     System.Threading.Tasks.Task<OperationResult<IReadOnlyList<CalendarEvent>>> QueryEventsAsync(EventQuery query, CancellationToken cancellationToken = default);
     System.Threading.Tasks.Task<OperationResult<CalendarEvent>> CreateEventAsync(string calendarId, Event @event, CancellationToken cancellationToken = default);
-    System.Threading.Tasks.Task<OperationResult<CalendarEvent>> UpdateEventAsync(string eventId, EventPatch patch, CancellationToken cancellationToken = default);
-    System.Threading.Tasks.Task<OperationResult<Unit>> DeleteEventAsync(string eventId, CancellationToken cancellationToken = default);
+    System.Threading.Tasks.Task<OperationResult<CalendarEvent>> UpdateEventAsync(string eventId, EventPatch patch, string? calendarId = null, CancellationToken cancellationToken = default);
+    System.Threading.Tasks.Task<OperationResult<Unit>> DeleteEventAsync(string eventId, string? calendarId = null, CancellationToken cancellationToken = default);
 }
 
 public interface ITasksProvider

@@ -72,4 +72,10 @@ public sealed partial class MainWindow : Window
             else await viewModel.EnableEmailAsync(account.Key);
         }
     }
+
+    private async void ReconnectAccount_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string accountKey } && DataContext is MainWindowViewModel viewModel)
+            await viewModel.ReconnectAsync(accountKey);
+    }
 }

@@ -42,6 +42,7 @@ public sealed partial class App : Application
             {
                 if (eventArgs.PropertyName is nameof(MainWindowViewModel.IsBusy)
                     or nameof(MainWindowViewModel.IsConnected)
+                    or nameof(MainWindowViewModel.HasDisconnectedServices)
                     or nameof(MainWindowViewModel.IsFeedbackError))
                 {
                     RefreshTrayStatus();
@@ -164,14 +165,14 @@ public sealed partial class App : Application
 
     private TrayConnectionState GetTrayState()
     {
-        if (_viewModel?.IsFeedbackError is true)
-        {
-            return TrayConnectionState.Error;
-        }
-
         if (_viewModel?.IsBusy is true)
         {
             return TrayConnectionState.Connecting;
+        }
+
+        if (_viewModel?.IsFeedbackError is true || _viewModel?.HasDisconnectedServices is true)
+        {
+            return TrayConnectionState.Error;
         }
 
         return _viewModel?.IsConnected is true

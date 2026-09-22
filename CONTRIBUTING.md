@@ -15,11 +15,16 @@ Install the .NET SDK selected by `global.json`, then run:
 ```powershell
 dotnet restore --locked-mode
 dotnet build ProductivityMcp.sln -c Release --no-restore
-dotnet test ProductivityMcp.sln -c Release --no-build --no-restore
+pwsh src/ProductivityMcp.App/bin/Release/net10.0/playwright.ps1 install chromium
+dotnet test --project tests/ProductivityMcp.Tests/ProductivityMcp.Tests.csproj -c Release --no-build --no-restore --filter "TestCategory!=Live"
 dotnet format ProductivityMcp.sln --verify-no-changes --no-restore
 ```
 
-The automated tests use fakes and temporary files. They do not need a Google account or network access after package restore.
+Non-live tests use fakes, a local MCP child process and temporary files. They need no Google account. Renderer tests also need Playwright Chromium: its first installation downloads browser binaries, and Linux requires Chromium system libraries. After those prerequisites, tests do not need external services.
+
+`scripts/verify.ps1` runs the same checks locally; `-InstallRenderer` installs Chromium and `-SkipRenderer` intentionally omits its tests. Never enable live tests in a routine check. For deliberate own-account tests, set both `PRODUCTIVITY_MCP_LIVE_TESTS=1` and `PRODUCTIVITY_MCP_LIVE_ACCOUNT` to an already-connected test mailbox. They send only to that address and modify only their generated data. They do not start interactive sign-in.
+
+GitHub workflows are manual-only and Actions is disabled to prevent runner charges. Do not enable or dispatch hosted workflows without maintainer approval. See [release preparation](docs/releasing.md) for local packaging and the synthetic UI preview.
 
 ## Design boundaries
 

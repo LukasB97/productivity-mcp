@@ -35,7 +35,9 @@ public sealed record EmailAccountInfo(string Account, string Provider);
 public sealed record EmailAddress(string Address, string? Name = null);
 public sealed record EmailAttachment(string AttachmentId, string Name, string MediaType, long Size);
 public sealed record EmailBody(EmailContentFormat Format, string Content);
-public sealed record EmailComposeBody(EmailComposeFormat Format, string Content);
+public sealed record EmailComposeBody(
+    [property: EnumDataType(typeof(EmailComposeFormat))] EmailComposeFormat Format,
+    [property: Required(AllowEmptyStrings = true)] string Content);
 public sealed record EmailImage(string MediaType, byte[] Data, int Page);
 
 public sealed record EmailSummary(
@@ -102,8 +104,18 @@ public sealed record EmailQuery : IValidatableObject
         if (depth > 8) { yield return new ValidationResult("filter nesting must not exceed 8 levels.", [nameof(Filter)]); yield break; }
         if (filter.LargerThanBytes is < 0 || filter.SmallerThanBytes is < 0)
             yield return new ValidationResult("message sizes must not be negative.", [nameof(Filter)]);
+        if (filter.After is not null && filter.Before is not null && filter.After >= filter.Before)
+            yield return new ValidationResult("before must be after after.", [nameof(Filter)]);
+        if (filter.Mailbox is not null && !Enum.IsDefined(filter.Mailbox.Value))
+            yield return new ValidationResult("mailbox is not supported.", [nameof(Filter)]);
+        if (new[] { filter.From, filter.To, filter.Cc, filter.Bcc, filter.Labels }
+            .Any(values => values?.Any(string.IsNullOrWhiteSpace) == true))
+            yield return new ValidationResult("filter lists must not contain null or empty values.", [nameof(Filter)]);
         foreach (var child in (filter.And ?? []).Concat(filter.Or ?? []))
+        {
+            if (child is null) yield return new ValidationResult("filter conditions must not be null.", [nameof(Filter)]);
             foreach (var failure in ValidateFilter(child, depth + 1)) yield return failure;
+        }
         foreach (var failure in ValidateFilter(filter.Not, depth + 1)) yield return failure;
     }
 }
@@ -116,43 +128,61 @@ public sealed record EmailAttachmentInput
 
 public sealed record OutgoingEmail : IValidatableObject
 {
-    public IReadOnlyList<string> To { get; init; } = [];
-    public IReadOnlyList<string> Cc { get; init; } = [];
-    public IReadOnlyList<string> Bcc { get; init; } = [];
-    public string Subject { get; init; } = "";
+    [NotNullValue] public IReadOnlyList<string> To { get; init; } = [];
+    [NotNullValue] public IReadOnlyList<string> Cc { get; init; } = [];
+    [NotNullValue] public IReadOnlyList<string> Bcc { get; init; } = [];
+    [NotNullValue] public string Subject { get; init; } = "";
     [Required] public required EmailComposeBody Body { get; init; }
-    public IReadOnlyList<EmailAttachmentInput> Attachments { get; init; } = [];
+    [NotNullValue] public IReadOnlyList<EmailAttachmentInput> Attachments { get; init; } = [];
     public string? ReplyToMessageId { get; init; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         if (To.Count + Cc.Count + Bcc.Count == 0)
             yield return new ValidationResult("at least one recipient is required.", [nameof(To)]);
-        var validator = new EmailAddressAttribute();
-        foreach (var address in To.Concat(Cc).Concat(Bcc).Where(x => !validator.IsValid(x)))
-            yield return new ValidationResult($"'{address}' is not a valid email address.", [nameof(To)]);
+        foreach (var failure in EmailDraftInput.ValidateDraftFields(To, Cc, Bcc, Body, Attachments)) yield return failure;
     }
 }
 
 public sealed record EmailDraftInput : IValidatableObject
 {
-    public IReadOnlyList<string> To { get; init; } = [];
-    public IReadOnlyList<string> Cc { get; init; } = [];
-    public IReadOnlyList<string> Bcc { get; init; } = [];
-    public string Subject { get; init; } = "";
+    [NotNullValue] public IReadOnlyList<string> To { get; init; } = [];
+    [NotNullValue] public IReadOnlyList<string> Cc { get; init; } = [];
+    [NotNullValue] public IReadOnlyList<string> Bcc { get; init; } = [];
+    [NotNullValue] public string Subject { get; init; } = "";
     public EmailComposeBody? Body { get; init; }
-    public IReadOnlyList<EmailAttachmentInput> Attachments { get; init; } = [];
+    [NotNullValue] public IReadOnlyList<EmailAttachmentInput> Attachments { get; init; } = [];
     public string? ReplyToMessageId { get; init; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
-        ValidateDraftFields(To, Cc, Bcc, Body);
+        ValidateDraftFields(To, Cc, Bcc, Body, Attachments);
 
     internal static IEnumerable<ValidationResult> ValidateDraftFields(
-        IEnumerable<string>? to, IEnumerable<string>? cc, IEnumerable<string>? bcc, EmailComposeBody? body)
+        IEnumerable<string>? to, IEnumerable<string>? cc, IEnumerable<string>? bcc, EmailComposeBody? body,
+        IReadOnlyList<EmailAttachmentInput>? attachments)
     {
         var validator = new EmailAddressAttribute();
         foreach (var address in (to ?? []).Concat(cc ?? []).Concat(bcc ?? []).Where(x => string.IsNullOrWhiteSpace(x) || !validator.IsValid(x)))
             yield return new ValidationResult($"'{address}' is not a valid email address.", [nameof(To)]);
+        if (body is not null)
+        {
+            var failures = new List<ValidationResult>();
+            Validator.TryValidateObject(body, new ValidationContext(body), failures, validateAllProperties: true);
+            foreach (var failure in failures)
+                yield return new ValidationResult(failure.ErrorMessage, [nameof(Body)]);
+        }
+        foreach (var attachment in attachments ?? [])
+        {
+            if (attachment is null)
+            {
+                yield return new ValidationResult("attachments must not contain null.", [nameof(Attachments)]);
+                continue;
+            }
+            var failures = new List<ValidationResult>();
+            Validator.TryValidateObject(attachment, new ValidationContext(attachment), failures, validateAllProperties: true);
+            foreach (var failure in failures)
+                yield return new ValidationResult(failure.ErrorMessage, [nameof(Attachments)]);
+        }
     }
 }
 
@@ -186,7 +216,7 @@ public sealed record EmailDraftPatch : IValidatableObject
     {
         if (!HasTo && !HasCc && !HasBcc && !HasSubject && !HasBody && !HasAttachments && !HasReplyToMessageId)
             yield return new ValidationResult("patch must contain at least one field.");
-        foreach (var failure in EmailDraftInput.ValidateDraftFields(To, Cc, Bcc, Body)) yield return failure;
+        foreach (var failure in EmailDraftInput.ValidateDraftFields(To, Cc, Bcc, Body, Attachments)) yield return failure;
     }
 }
 
@@ -195,8 +225,8 @@ public sealed record EmailMessagePatch : IValidatableObject
     public bool? Unread { get; init; }
     public bool? Starred { get; init; }
     public bool? Important { get; init; }
-    public IReadOnlyList<string> AddLabels { get; init; } = [];
-    public IReadOnlyList<string> RemoveLabels { get; init; } = [];
+    [NotNullValue] public IReadOnlyList<string> AddLabels { get; init; } = [];
+    [NotNullValue] public IReadOnlyList<string> RemoveLabels { get; init; } = [];
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {

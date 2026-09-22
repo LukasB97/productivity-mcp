@@ -35,7 +35,7 @@ public sealed class CalendarToolTests
         var result = await tools.Update(
             "event-id",
             new EventPatch { VideoMeeting = false },
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         Assert.IsTrue(result.IsError);
         Assert.AreEqual(0, provider.UpdateCalls);
@@ -68,6 +68,7 @@ public sealed class CalendarToolTests
         public System.Threading.Tasks.Task<OperationResult<CalendarEvent>> UpdateEventAsync(
             string eventId,
             EventPatch patch,
+            string? calendarId = null,
             CancellationToken cancellationToken = default)
         {
             UpdateCalls++;
@@ -76,6 +77,7 @@ public sealed class CalendarToolTests
 
         public System.Threading.Tasks.Task<OperationResult<Unit>> DeleteEventAsync(
             string eventId,
+            string? calendarId = null,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

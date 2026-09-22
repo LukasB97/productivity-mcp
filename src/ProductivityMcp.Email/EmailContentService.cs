@@ -163,16 +163,27 @@ public sealed class EmailContentService
 
     private static async Task<IReadOnlyList<EmailImage>> RenderAsync(string html, bool loadRemoteImages, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (html.Length > 2_500_000)
+            throw new UnsupportedFeatureException("This message is too large to render safely. Request plain, html or markdown instead.", "format");
         try
         {
             using var playwright = await Playwright.CreateAsync().ConfigureAwait(false);
-            await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true }).ConfigureAwait(false);
-            var context = await browser.NewContextAsync(new() { JavaScriptEnabled = false, ViewportSize = new() { Width = 900, Height = 1200 } }).ConfigureAwait(false);
+            await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true, ChromiumSandbox = true }).ConfigureAwait(false);
+            var context = await browser.NewContextAsync(new()
+            {
+                JavaScriptEnabled = false,
+                AcceptDownloads = false,
+                ServiceWorkers = ServiceWorkerPolicy.Block,
+                ViewportSize = new() { Width = 900, Height = 1200 },
+            }).ConfigureAwait(false);
             var page = await context.NewPageAsync().ConfigureAwait(false);
+            page.SetDefaultTimeout(15_000);
+            var remoteRequests = 0;
             await page.RouteAsync("**/*", async route =>
             {
                 var uri = new Uri(route.Request.Url);
-                if (!loadRemoteImages || route.Request.ResourceType != "image")
+                if (!loadRemoteImages || route.Request.ResourceType != "image" || Interlocked.Increment(ref remoteRequests) > 16)
                 {
                     await route.AbortAsync().ConfigureAwait(false);
                     return;
@@ -192,14 +203,24 @@ public sealed class EmailContentService
                     await route.AbortAsync().ConfigureAwait(false);
                 }
             }).ConfigureAwait(false);
-            await page.SetContentAsync(html, new() { WaitUntil = WaitUntilState.NetworkIdle }).ConfigureAwait(false);
+            await page.SetContentAsync(html, new() { WaitUntil = WaitUntilState.NetworkIdle }).WaitAsync(cancellationToken).ConfigureAwait(false);
             var height = await page.EvaluateAsync<int>("document.documentElement.scrollHeight").ConfigureAwait(false);
+            if (height > 24_000)
+                throw new UnsupportedFeatureException("This message exceeds 20 image pages. Request plain, html or markdown instead; no partial images were returned.", "format");
             var images = new List<EmailImage>();
+            var totalBytes = 0;
             for (var y = 0; y < Math.Max(1, height); y += 1200)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await page.EvaluateAsync("y => window.scrollTo(0, y)", y).ConfigureAwait(false);
-                var bytes = await page.ScreenshotAsync(new() { Type = ScreenshotType.Png }).ConfigureAwait(false);
+                var bytes = await page.ScreenshotAsync(new()
+                {
+                    Type = ScreenshotType.Png,
+                    FullPage = true,
+                    Clip = new() { X = 0, Y = y, Width = 900, Height = Math.Min(1200, height - y) },
+                }).WaitAsync(cancellationToken).ConfigureAwait(false);
+                totalBytes += bytes.Length;
+                if (totalBytes > 20 * 1024 * 1024)
+                    throw new UnsupportedFeatureException("Rendered images exceed 20 MiB. Request a text format instead.", "format");
                 images.Add(new EmailImage("image/png", bytes, images.Count + 1));
             }
             return images;
@@ -207,6 +228,10 @@ public sealed class EmailContentService
         catch (PlaywrightException exception) when (exception.Message.Contains("Executable doesn't exist", StringComparison.OrdinalIgnoreCase))
         {
             throw new ConfigurationException("The email image renderer is not installed. Install it from the Productivity MCP app.", "format", exception);
+        }
+        catch (Microsoft.Playwright.PlaywrightException exception)
+        {
+            throw new ConfigurationException("The email image renderer could not complete this message. Try a text format or reinstall the renderer.", "format", exception);
         }
     }
 
