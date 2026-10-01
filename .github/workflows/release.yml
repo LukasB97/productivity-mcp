@@ -77,7 +77,7 @@ jobs:
           Copy-Item -LiteralPath $archives[0].FullName -Destination .
 
       - name: Upload package
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: productivity-mcp-${{ matrix.rid }}
           path: productivity-mcp-${{ matrix.rid }}.*
