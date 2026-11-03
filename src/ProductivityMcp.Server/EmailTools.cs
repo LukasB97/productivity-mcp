@@ -9,11 +9,11 @@ namespace ProductivityMcp.Server;
 public sealed class EmailTools(IEmailProvider provider)
 {
     [McpServerTool(Name = "email.accounts.list", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ListOutput<EmailAccountInfo>))]
-    [Description("Lists email-enabled accounts by their primary email address.")]
+    [Description("Lists email-enabled accounts by their primary email address. provider is \"gmail\" or \"imap\".")]
     public async Task<CallToolResult> Accounts(CancellationToken token) => McpToolResults.FromList(await provider.ListAccountsAsync(token).ConfigureAwait(false));
 
     [McpServerTool(Name = "email.messages.query", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(EmailQueryResult))]
-    [Description("Queries email messages with provider-neutral structured filters, optionally across all email accounts.")]
+    [Description("Queries email messages with provider-neutral structured filters, optionally across all email accounts. Gmail accounts support every filter. Other IMAP accounts reject important and filename, and accept mailbox, labels (folder names), after/before and hasAttachments only at the top level of the filter.")]
     public async Task<CallToolResult> Query(EmailQuery query, CancellationToken token)
     {
         if (!McpToolResults.TryValue(ModelValidation.Validate(query, nameof(query)), out var value, out var error)) return error;

@@ -1,8 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\ProductivityMcp.Core\ProductivityMcp.Core.csproj" />
-    <ProjectReference Include="..\ProductivityMcp.Email\ProductivityMcp.Email.csproj" />
+    <ProjectReference Include="..\ProductivityMcp.Security\ProductivityMcp.Security.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -11,10 +11,8 @@
 
   <ItemGroup>
     <PackageReference Include="Google.Apis.Calendar.v3" Version="1.75.0.4206" />
-    <PackageReference Include="Google.Apis.Gmail.v1" Version="1.75.0.4225" />
     <PackageReference Include="Google.Apis.Tasks.v1" Version="1.74.0.3958" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
   </ItemGroup>
 
   <PropertyGroup>

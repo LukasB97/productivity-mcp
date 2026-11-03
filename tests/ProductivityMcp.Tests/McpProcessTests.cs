@@ -23,6 +23,7 @@ public sealed class McpProcessTests
             environment["PRODUCTIVITY_MCP_GOOGLE_CREDENTIALS"] = options.CredentialsPath;
             environment["PRODUCTIVITY_MCP_GOOGLE_ACCOUNTS"] = options.AccountsPath;
             environment["PRODUCTIVITY_MCP_GOOGLE_TOKENS"] = options.TokenStorePath;
+            environment["PRODUCTIVITY_MCP_MAIL_DATA"] = Path.Combine(directory.FullName, "mail");
             var packagedServer = Environment.GetEnvironmentVariable("PRODUCTIVITY_MCP_TEST_SERVER");
             var serverAssembly = Path.Combine(AppContext.BaseDirectory, "ProductivityMcp.Server.dll");
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

@@ -1,19 +1,40 @@
 using System.Text.Json;
-using Google.Apis.Gmail.v1;
+using MailKit.Security;
 using ProductivityMcp.Core;
 using ProductivityMcp.Providers.Google;
+using ProductivityMcp.Providers.Imap;
+using Task = System.Threading.Tasks.Task;
 
 namespace ProductivityMcp.App.Services;
 
+/// <summary>
+/// Connects Google accounts (calendar and tasks, via OAuth) and mailboxes (via IMAP/SMTP with an
+/// app password). Both are shown per email address; a mailbox without a Google account gets its own entry.
+/// </summary>
 public sealed class GoogleSetupService : IGoogleSetupService
 {
+    public const string MailKeyPrefix = "mail:";
+
     private readonly GoogleOptions _options;
     private readonly GoogleAccountCatalog _accounts;
+    private readonly MailAccountCatalog _mail;
+    private readonly MailServerDiscovery _discovery;
+    private readonly Func<MailAccount, string, CancellationToken, Task<bool>> _verifySignIn;
+    private readonly Func<MailAccount, CancellationToken, Task> _checkMailbox;
 
-    public GoogleSetupService(GoogleOptions options)
+    public GoogleSetupService(
+        GoogleOptions options,
+        MailAccountCatalog mail,
+        MailServerDiscovery? discovery = null,
+        Func<MailAccount, string, CancellationToken, Task<bool>>? verifySignIn = null,
+        Func<MailAccount, CancellationToken, Task>? checkMailbox = null)
     {
         _options = options;
         _accounts = new GoogleAccountCatalog(options);
+        _mail = mail;
+        _discovery = discovery ?? new MailServerDiscovery();
+        _verifySignIn = verifySignIn ?? MailAccountVerifier.VerifySignInAsync;
+        _checkMailbox = checkMailbox ?? ((account, token) => MailAccountVerifier.CheckStoredAsync(account, _mail, token));
     }
 
     public SetupSnapshot Inspect()
@@ -26,8 +47,8 @@ public sealed class GoogleSetupService : IGoogleSetupService
             credentialsPath,
             File.Exists(effectiveCredentialsPath),
             tokenStorePath,
-            _accounts.HasAnyToken(),
-            _accounts.List().Count > 0);
+            _accounts.HasAnyToken() || _mail.List().Count > 0,
+            _accounts.List().Count > 0 || _mail.List().Count > 0);
     }
 
     public OperationResult<SetupSnapshot> ImportCredentials(string sourcePath)
@@ -85,12 +106,26 @@ public sealed class GoogleSetupService : IGoogleSetupService
             {
                 connected.Add(new AccountConnectionSummary(
                     registration.Key, registration.Email, [], [],
-                    registration.CalendarTasksEnabled, false,
-                    registration.EmailEnabled, false, failure.Error, failure.Error));
+                    true, false, CalendarTasksError: failure.Error));
                 continue;
             }
 
             connected.Add(((OperationResult<AccountConnectionSummary>.Success)result).Value);
+        }
+
+        foreach (var mailbox in _mail.List())
+        {
+            var error = await CheckMailboxAsync(mailbox, cancellationToken).ConfigureAwait(false);
+            var index = connected.FindIndex(item => string.Equals(item.Email, mailbox.Email, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+            {
+                connected.Add(new AccountConnectionSummary(
+                    MailKeyPrefix + mailbox.Key, mailbox.Email, [], [], false, false, true, error is null, EmailError: error));
+            }
+            else
+            {
+                connected[index] = connected[index] with { EmailEnabled = true, EmailConnected = error is null, EmailError = error };
+            }
         }
 
         return OperationResult.Ok(new ConnectionSummary(connected));
@@ -104,7 +139,7 @@ public sealed class GoogleSetupService : IGoogleSetupService
         var keepAccount = false;
         try
         {
-            var added = await AuthenticateAsync(accountKey, null, GoogleServiceAccess.CalendarTasks, cancellationToken).ConfigureAwait(false);
+            var added = await AuthenticateAsync(accountKey, null, cancellationToken).ConfigureAwait(false);
             if (added is OperationResult<string>.Failure failure)
             {
                 return OperationResult.Fail<ConnectionSummary>(failure.Error);
@@ -139,12 +174,8 @@ public sealed class GoogleSetupService : IGoogleSetupService
         var registration = _accounts.List().FirstOrDefault(account => account.Key == accountKey);
         if (registration is null)
             return OperationResult.Fail<ConnectionSummary>(new(OperationErrorCode.NotFound, "Das Google-Konto wurde nicht gefunden."));
-        var access = (registration.CalendarTasksEnabled ? GoogleServiceAccess.CalendarTasks : 0)
-            | (registration.EmailEnabled ? GoogleServiceAccess.Email : 0);
-        if (access == 0)
-            return OperationResult.Fail<ConnectionSummary>(new(OperationErrorCode.Validation, "Aktiviere zuerst einen Dienst für dieses Konto."));
         var result = await AuthenticateAsync(accountKey,
-            registration.Email == "Google-Konto" ? null : registration.Email, access, cancellationToken).ConfigureAwait(false);
+            registration.Email == "Google-Konto" ? null : registration.Email, cancellationToken).ConfigureAwait(false);
         if (result is OperationResult<string>.Success success)
             _accounts.Upsert(registration with { Email = success.Value });
         return result is OperationResult<string>.Failure failure
@@ -152,72 +183,99 @@ public sealed class GoogleSetupService : IGoogleSetupService
             : await ConnectAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<OperationResult<ConnectionSummary>> AddEmailAccountAsync(CancellationToken cancellationToken = default)
+    public async Task<OperationResult<MailServerSettings?>> DiscoverMailServerAsync(
+        string email, CancellationToken cancellationToken = default)
     {
-        var temporaryKey = GoogleAccountCatalog.CreateAccountKey();
-        var authenticated = await AuthenticateEmailAsync(temporaryKey, null, false, cancellationToken).ConfigureAwait(false);
-        if (authenticated is OperationResult<string>.Failure failure)
+        if (!IsEmailAddress(email))
+            return OperationResult.Fail<MailServerSettings?>(new(OperationErrorCode.Validation, "Gib eine gültige E-Mail-Adresse ein.", "email"));
+        try
         {
-            CleanupPendingAccount(temporaryKey);
-            return OperationResult.Fail<ConnectionSummary>(failure.Error);
+            return OperationResult.Ok(await _discovery.DiscoverAsync(email.Trim(), cancellationToken).ConfigureAwait(false));
+        }
+        catch (UnsupportedFeatureException)
+        {
+            return OperationResult.Fail<MailServerSettings?>(new(OperationErrorCode.Unsupported,
+                "Outlook-, Hotmail- und Live-Postfächer erlauben nur die Microsoft-Anmeldung. Das wird noch nicht unterstützt.", "email"));
+        }
+    }
+
+    public async Task<OperationResult<ConnectionSummary>> ConnectEmailAsync(
+        MailConnectionRequest request, CancellationToken cancellationToken = default)
+    {
+        var email = request.Email.Trim();
+        if (!IsEmailAddress(email))
+            return OperationResult.Fail<ConnectionSummary>(new(OperationErrorCode.Validation, "Gib eine gültige E-Mail-Adresse ein.", "email"));
+        if (string.IsNullOrWhiteSpace(request.Password))
+            return OperationResult.Fail<ConnectionSummary>(new(OperationErrorCode.Validation, "Gib das Passwort oder App-Passwort ein.", "password"));
+
+        // Reconnecting a known mailbox keeps its server settings unless new ones are entered.
+        var existing = _mail.Find(email);
+        var settings = request.Settings
+            ?? (existing is null ? null : new MailServerSettings(existing.Imap, existing.Smtp, existing.Username));
+        if (settings is null)
+        {
+            var discovered = await DiscoverMailServerAsync(email, cancellationToken).ConfigureAwait(false);
+            if (discovered is OperationResult<MailServerSettings?>.Failure discoveryFailure)
+                return OperationResult.Fail<ConnectionSummary>(discoveryFailure.Error);
+            settings = ((OperationResult<MailServerSettings?>.Success)discovered).Value;
         }
 
-        var email = ((OperationResult<string>.Success)authenticated).Value;
-        var existing = _accounts.List().FirstOrDefault(x => string.Equals(x.Email, email, StringComparison.OrdinalIgnoreCase));
-        if (existing is not null)
+        if (settings is null)
+            return OperationResult.Fail<ConnectionSummary>(new(OperationErrorCode.Validation,
+                "Die Servereinstellungen konnten nicht automatisch ermittelt werden. Trage sie unter „Servereinstellungen“ ein.", "settings"));
+        if (Invalid(settings.Imap) || Invalid(settings.Smtp))
+            return OperationResult.Fail<ConnectionSummary>(new(OperationErrorCode.Validation,
+                "Prüfe die Servereinstellungen: Servername und Port (1–65535) sind erforderlich.", "settings"));
+
+        var gmail = string.Equals(settings.Imap.Host.Trim(), "imap.gmail.com", StringComparison.OrdinalIgnoreCase);
+        // Google shows app passwords in groups of four; the spaces are not part of the password.
+        var password = gmail ? string.Concat(request.Password.Where(character => !char.IsWhiteSpace(character))) : request.Password;
+        var account = new MailAccount(
+            existing?.Key ?? MailAccountCatalog.CreateAccountKey(),
+            existing?.Email ?? email,
+            string.IsNullOrWhiteSpace(settings.Username) ? email : settings.Username.Trim(),
+            settings.Imap with { Host = settings.Imap.Host.Trim() },
+            settings.Smtp with { Host = settings.Smtp.Host.Trim() });
+
+        try
         {
-            try
+            await _verifySignIn(account, password, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (AuthenticationException)
+        {
+            return OperationResult.Fail<ConnectionSummary>(new(OperationErrorCode.Authentication, gmail
+                ? "Google hat die Anmeldung abgelehnt. Verwende ein App-Passwort, nicht dein normales Google-Passwort. Dafür muss die Bestätigung in zwei Schritten aktiv sein."
+                : "Der Mailserver hat die Anmeldung abgelehnt. Prüfe Adresse und Passwort. Manche Anbieter (z. B. GMX, web.de, T-Online) verlangen, dass IMAP in den Postfach-Einstellungen freigeschaltet ist oder ein eigenes Passwort dafür genutzt wird.",
+                "password"));
+        }
+        catch (Exception exception) when (MailOperation.Translate(exception) is { } error)
+        {
+            return OperationResult.Fail<ConnectionSummary>(error with
             {
-                if (existing.CalendarTasksEnabled)
+                Message = error.Code switch
                 {
-                    var combined = await AuthenticateEmailAsync(
-                        existing.Key, email, includeCalendarTasks: true, cancellationToken).ConfigureAwait(false);
-                    if (combined is OperationResult<string>.Failure combinedFailure)
-                        return OperationResult.Fail<ConnectionSummary>(combinedFailure.Error);
-                }
-                else
-                {
-                    PromoteEmailToken(temporaryKey, existing.Key);
-                }
-
-                _accounts.Upsert(existing with { EmailEnabled = true });
-            }
-            finally
-            {
-                CleanupPendingAccount(temporaryKey);
-            }
-        }
-        else
-        {
-            _accounts.Upsert(new GoogleAccountRegistration(temporaryKey, email, false, true));
+                    OperationErrorCode.ProviderUnavailable => "Der Mailserver ist nicht erreichbar. Prüfe Servername, Port und deine Internetverbindung.",
+                    OperationErrorCode.Configuration => "Es konnte keine sichere Verbindung zum Mailserver aufgebaut werden. Prüfe Port und Verschlüsselung.",
+                    _ => $"Die Verbindung zum Mailserver ist fehlgeschlagen: {error.Message}",
+                },
+            });
         }
 
+        await _mail.SaveAsync(account, password, cancellationToken).ConfigureAwait(false);
         return await ConnectAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<OperationResult<ConnectionSummary>> EnableEmailAsync(
-        string accountKey, CancellationToken cancellationToken = default)
+    public async Task<OperationResult<ConnectionSummary>> DisconnectEmailAsync(
+        string email, CancellationToken cancellationToken = default)
     {
-        var registration = _accounts.List().FirstOrDefault(x => x.Key == accountKey);
-        if (registration is null)
-            return OperationResult.Fail<ConnectionSummary>(new(OperationErrorCode.NotFound, "Das Google-Konto wurde nicht gefunden."));
-
-        var authenticated = await AuthenticateEmailAsync(
-            accountKey, registration.Email, registration.CalendarTasksEnabled, cancellationToken).ConfigureAwait(false);
-        if (authenticated is OperationResult<string>.Failure failure)
-            return OperationResult.Fail<ConnectionSummary>(failure.Error);
-
-        _accounts.Upsert(registration with { Email = ((OperationResult<string>.Success)authenticated).Value, EmailEnabled = true });
-        return await ConnectAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    public async Task<OperationResult<ConnectionSummary>> DisableEmailAsync(
-        string accountKey, CancellationToken cancellationToken = default)
-    {
-        var registration = _accounts.List().FirstOrDefault(x => x.Key == accountKey);
-        if (registration is null)
-            return OperationResult.Fail<ConnectionSummary>(new(OperationErrorCode.NotFound, "Das Google-Konto wurde nicht gefunden."));
-        _accounts.Upsert(registration with { EmailEnabled = false });
+        var mailbox = _mail.Find(email);
+        if (mailbox is null)
+            return OperationResult.Fail<ConnectionSummary>(new(OperationErrorCode.NotFound, "Das E-Mail-Konto wurde nicht gefunden."));
+        _mail.Remove(mailbox.Key);
         return await ConnectAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -225,6 +283,15 @@ public sealed class GoogleSetupService : IGoogleSetupService
     {
         try
         {
+            if (accountKey.StartsWith(MailKeyPrefix, StringComparison.Ordinal))
+            {
+                _mail.Remove(accountKey[MailKeyPrefix.Length..]);
+                return OperationResult.Ok(Inspect());
+            }
+
+            var email = _accounts.List().FirstOrDefault(item => item.Key == accountKey)?.Email;
+            if (email is not null && _mail.Find(email) is { } mailbox) _mail.Remove(mailbox.Key);
+
             var tokenFile = Path.Combine(
                 _accounts.TokenDirectory(accountKey),
                 GoogleServiceFactory.TokenFileName);
@@ -233,8 +300,9 @@ public sealed class GoogleSetupService : IGoogleSetupService
                 File.Delete(tokenFile);
             }
 
-            var emailDirectory = _accounts.EmailTokenDirectory(accountKey);
-            if (Directory.Exists(emailDirectory)) Directory.Delete(emailDirectory, recursive: true);
+            // Builds that used the Gmail API kept a separate token here.
+            var legacyEmailDirectory = Path.Combine(_accounts.TokenDirectory(accountKey), "email");
+            if (Directory.Exists(legacyEmailDirectory)) Directory.Delete(legacyEmailDirectory, recursive: true);
 
             _accounts.Remove(accountKey);
             return OperationResult.Ok(Inspect());
@@ -256,10 +324,7 @@ public sealed class GoogleSetupService : IGoogleSetupService
         IReadOnlyList<CalendarInfo> calendars = [];
         IReadOnlyList<TaskListInfo> taskLists = [];
         var email = registration.Email;
-        var calendarTasksConnected = false;
         OperationError? calendarTasksError = null;
-        OperationError? emailError = null;
-        if (registration.CalendarTasksEnabled)
         {
             var serviceFactory = new GoogleServiceFactory(_accounts.OptionsFor(registration.Key));
             var calendarResult = await new GoogleCalendarProvider(serviceFactory)
@@ -283,62 +348,26 @@ public sealed class GoogleSetupService : IGoogleSetupService
             if (taskListResult is OperationResult<IReadOnlyList<TaskListInfo>>.Success taskSuccess)
                 taskLists = taskSuccess.Value;
             else calendarTasksError ??= ((OperationResult<IReadOnlyList<TaskListInfo>>.Failure)taskListResult).Error;
-            calendarTasksConnected = calendarTasksError is null;
         }
 
-        var emailConnected = false;
-        if (registration.EmailEnabled)
-        {
-            var emailResult = await GoogleOperation.ExecuteAsync(async () =>
-            {
-                using var gmail = await new GoogleServiceFactory(
-                    _accounts.EmailOptionsFor(registration.Key), GoogleServiceAccess.Email)
-                    .CreateGmailAsync(cancellationToken).ConfigureAwait(false);
-                return await gmail.Users.GetProfile("me").ExecuteAsync(cancellationToken).ConfigureAwait(false);
-            }).ConfigureAwait(false);
-            if (emailResult is OperationResult<Google.Apis.Gmail.v1.Data.Profile>.Success profile)
-            {
-                emailConnected = string.Equals(profile.Value.EmailAddress, email, StringComparison.OrdinalIgnoreCase);
-                if (!emailConnected) emailError = new(OperationErrorCode.Authentication, "Die gespeicherte Anmeldung gehört zu einem anderen Konto.");
-            }
-            else emailError = ((OperationResult<Google.Apis.Gmail.v1.Data.Profile>.Failure)emailResult).Error;
-        }
         _accounts.Upsert(registration with { Email = email });
         return OperationResult.Ok(new AccountConnectionSummary(
             registration.Key, email, calendars, taskLists,
-            registration.CalendarTasksEnabled, calendarTasksConnected,
-            registration.EmailEnabled, emailConnected, calendarTasksError, emailError));
+            true, calendarTasksError is null, CalendarTasksError: calendarTasksError));
     }
 
-    private Task<OperationResult<string>> AuthenticateEmailAsync(
-        string accountKey, string? expectedEmail, bool includeCalendarTasks, CancellationToken cancellationToken) =>
-        AuthenticateAsync(accountKey, expectedEmail,
-            includeCalendarTasks ? GoogleServiceAccess.Combined : GoogleServiceAccess.Email, cancellationToken);
-
     private async Task<OperationResult<string>> AuthenticateAsync(
-        string accountKey, string? expectedEmail, GoogleServiceAccess access, CancellationToken cancellationToken)
+        string accountKey, string? expectedEmail, CancellationToken cancellationToken)
     {
-        var pendingDirectory = Path.Combine(_accounts.TokenDirectory(accountKey), $"email-pending-{Guid.NewGuid():N}");
+        var pendingDirectory = Path.Combine(_accounts.TokenDirectory(accountKey), $"pending-{Guid.NewGuid():N}");
         try
         {
-            var factory = new GoogleServiceFactory(_options with { TokenStorePath = pendingDirectory }, access, interactive: true);
-            string? email = null;
-            if (access.HasFlag(GoogleServiceAccess.CalendarTasks))
-            {
-                using var calendar = await factory.CreateCalendarAsync(cancellationToken).ConfigureAwait(false);
-                var primary = await calendar.CalendarList.Get("primary").ExecuteAsync(cancellationToken).ConfigureAwait(false);
-                email = primary.Id;
-                using var tasks = await factory.CreateTasksAsync(cancellationToken).ConfigureAwait(false);
-                await tasks.Tasklists.List().ExecuteAsync(cancellationToken).ConfigureAwait(false);
-            }
-            if (access.HasFlag(GoogleServiceAccess.Email))
-            {
-                using var gmail = await factory.CreateGmailAsync(cancellationToken).ConfigureAwait(false);
-                var profile = await gmail.Users.GetProfile("me").ExecuteAsync(cancellationToken).ConfigureAwait(false);
-                if (email is not null && !string.Equals(email, profile.EmailAddress, StringComparison.OrdinalIgnoreCase))
-                    return OperationResult.Fail<string>(new(OperationErrorCode.Authentication, "Die Google-Dienste haben unterschiedliche Konten zurückgegeben."));
-                email = profile.EmailAddress;
-            }
+            var factory = new GoogleServiceFactory(_options with { TokenStorePath = pendingDirectory }, interactive: true);
+            using var calendar = await factory.CreateCalendarAsync(cancellationToken).ConfigureAwait(false);
+            var primary = await calendar.CalendarList.Get("primary").ExecuteAsync(cancellationToken).ConfigureAwait(false);
+            var email = primary.Id;
+            using var tasks = await factory.CreateTasksAsync(cancellationToken).ConfigureAwait(false);
+            await tasks.Tasklists.List().ExecuteAsync(cancellationToken).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(email))
                 return OperationResult.Fail<string>(new(OperationErrorCode.Authentication, "Google hat keine E-Mail-Adresse zurückgegeben."));
             if (!string.IsNullOrWhiteSpace(expectedEmail) &&
@@ -365,13 +394,31 @@ public sealed class GoogleSetupService : IGoogleSetupService
         }
     }
 
-    private void PromoteEmailToken(string sourceKey, string destinationKey)
+    private async Task<OperationError?> CheckMailboxAsync(MailAccount mailbox, CancellationToken cancellationToken)
     {
-        var source = Path.Combine(_accounts.TokenDirectory(sourceKey), GoogleServiceFactory.TokenFileName);
-        var destination = _accounts.TokenDirectory(destinationKey);
-        Directory.CreateDirectory(destination);
-        File.Move(source, Path.Combine(destination, GoogleServiceFactory.TokenFileName), overwrite: true);
+        try
+        {
+            await _checkMailbox(mailbox, cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (MailOperation.Translate(exception) is { } error)
+        {
+            return error.Code == OperationErrorCode.Authentication
+                ? error with { Message = "Das gespeicherte Passwort wird nicht mehr akzeptiert. Verbinde das Postfach erneut." }
+                : error;
+        }
     }
+
+    private static bool IsEmailAddress(string? value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(value.Trim());
+
+    private static bool Invalid(MailServer server) =>
+        string.IsNullOrWhiteSpace(server.Host) || server.Port is < 1 or > 65535;
 
     private static bool HasText(JsonElement parent, string propertyName) =>
         parent.TryGetProperty(propertyName, out var value) &&

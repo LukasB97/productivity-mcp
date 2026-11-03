@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using ProductivityMcp.App.Services;
 using ProductivityMcp.Core;
 using ProductivityMcp.Email;
+using ProductivityMcp.Providers.Imap;
 using AsyncTask = System.Threading.Tasks.Task;
 
 namespace ProductivityMcp.App.ViewModels;
@@ -21,19 +22,21 @@ public sealed record ConnectedAccountViewModel(
     OperationError? CalendarTasksError = null,
     OperationError? EmailError = null)
 {
-    public string EmailActionText => EmailEnabled ? "E-Mail deaktivieren" : "E-Mail verbinden";
+    public string EmailActionText => EmailEnabled ? "E-Mail trennen" : "E-Mail verbinden";
     public string EmailStatusText => Status(EmailEnabled, EmailConnected, EmailError);
     public string CalendarTasksStatusText => Status(CalendarTasksEnabled, CalendarTasksConnected, CalendarTasksError);
-    public bool NeedsReconnect => NeedsSignIn(CalendarTasksError) || NeedsSignIn(EmailError)
-        || (CalendarTasksEnabled && !CalendarTasksConnected && CalendarTasksError is null)
-        || (EmailEnabled && !EmailConnected && EmailError is null);
+    public bool NeedsGoogleReconnect => CalendarTasksEnabled
+        && (NeedsSignIn(CalendarTasksError) || (!CalendarTasksConnected && CalendarTasksError is null));
+    public bool NeedsEmailReconnect => EmailEnabled
+        && (NeedsSignIn(EmailError) || (!EmailConnected && EmailError is null));
+    public bool NeedsReconnect => NeedsGoogleReconnect || NeedsEmailReconnect;
     public bool HasConnectionError => CalendarTasksError is not null || EmailError is not null;
     public string ConnectionError => string.Join("\n", new[] { CalendarTasksError?.Message, EmailError?.Message }
         .Where(message => !string.IsNullOrWhiteSpace(message)).Distinct());
     public string ResourceSummary => $"{Calendars.Count} Kalender · {TaskLists.Count} Aufgabenlisten";
 
     private static bool NeedsSignIn(OperationError? error) => error?.Code is OperationErrorCode.Authentication or OperationErrorCode.PermissionDenied;
-    private static string Status(bool enabled, bool connected, OperationError? error) => !enabled ? "Deaktiviert"
+    private static string Status(bool enabled, bool connected, OperationError? error) => !enabled ? "Nicht verbunden"
         : connected ? "Verbunden" : error is null || NeedsSignIn(error) ? "Erneut anmelden" : "Prüfung fehlgeschlagen";
 }
 
@@ -112,6 +115,55 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private bool _isRendererBusy;
 
+    [ObservableProperty]
+    private bool _isEmailFormVisible;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowGmailHelp))]
+    private string _emailAddress = "";
+
+    [ObservableProperty]
+    private bool _isEmailAddressLocked;
+
+    [ObservableProperty]
+    private string _emailPassword = "";
+
+    [ObservableProperty]
+    private bool _showServerSettings;
+
+    [ObservableProperty]
+    private string _mailUsername = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowGmailHelp))]
+    private string _imapHost = "";
+
+    [ObservableProperty]
+    private string _imapPort = "993";
+
+    [ObservableProperty]
+    private int _imapSecurityIndex;
+
+    [ObservableProperty]
+    private string _smtpHost = "";
+
+    [ObservableProperty]
+    private string _smtpPort = "465";
+
+    [ObservableProperty]
+    private int _smtpSecurityIndex;
+
+    [ObservableProperty]
+    private string _emailFormError = "";
+
+    [ObservableProperty]
+    private bool _hasEmailFormError;
+
+    public static IReadOnlyList<string> SecurityChoices { get; } = ["SSL/TLS", "STARTTLS"];
+
+    public bool ShowGmailHelp => MailServerDiscovery.IsGmailAddress(EmailAddress.Trim())
+        || string.Equals(ImapHost.Trim(), "imap.gmail.com", StringComparison.OrdinalIgnoreCase);
+
     public MainWindowViewModel(
         IGoogleSetupService setupService,
         IAutostartService? autostartService = null,
@@ -156,7 +208,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _initialized = true;
         var snapshot = _setupService.Inspect();
         ApplyLocalState(snapshot);
-        if (snapshot.CredentialsPresent && (snapshot.TokenPresent || snapshot.AccountsPresent))
+        if (snapshot.TokenPresent || snapshot.AccountsPresent)
         {
             await VerifyConnectionAsync(showBrowserMessage: false);
         }
@@ -208,32 +260,160 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async AsyncTask AddEmailAccountAsync()
+    private void OpenEmailForm() => ShowEmailForm(null);
+
+    /// <summary>Opens the mailbox form for an address that is already shown, e.g. a Google account.</summary>
+    public void OpenEmailFormFor(string email) => ShowEmailForm(email);
+
+    private void ShowEmailForm(string? email)
     {
         if (!CanInteract) return;
-        await RunConnectionAsync(
-            "E-Mail-Konto hinzufügen …",
-            "Wähle im Browser das Google-Konto aus, dessen E-Mail du verbinden möchtest.",
-            cancellationToken => _setupService.AddEmailAccountAsync(cancellationToken));
+        CancelDisconnect();
+        EmailAddress = email ?? "";
+        IsEmailAddressLocked = email is not null;
+        EmailPassword = "";
+        ShowServerSettings = false;
+        MailUsername = "";
+        ImapHost = "";
+        ImapPort = "993";
+        ImapSecurityIndex = 0;
+        SmtpHost = "";
+        SmtpPort = "465";
+        SmtpSecurityIndex = 0;
+        ClearEmailFormError();
+        HasFeedback = false;
+        IsEmailFormVisible = true;
     }
 
-    public async AsyncTask EnableEmailAsync(string accountKey)
+    [RelayCommand]
+    private void CancelEmailForm()
     {
-        if (!CanInteract) return;
-        await RunConnectionAsync(
-            "Gmail wird verbunden …",
-            "Bestätige im Browser den E-Mail-Zugriff für dieses Konto.",
-            cancellationToken => _setupService.EnableEmailAsync(accountKey, cancellationToken));
+        IsEmailFormVisible = false;
+        EmailPassword = "";
+        ClearEmailFormError();
     }
 
-    public async AsyncTask DisableEmailAsync(string accountKey)
+    [RelayCommand]
+    private async AsyncTask DetectServerSettingsAsync()
+    {
+        if (!CanInteract) return;
+        ClearEmailFormError();
+        var result = await _setupService.DiscoverMailServerAsync(EmailAddress);
+        switch (result)
+        {
+            case OperationResult<MailServerSettings?>.Success { Value: { } settings }:
+                FillServerSettings(settings);
+                break;
+            case OperationResult<MailServerSettings?>.Success:
+                FillServerGuess();
+                ShowEmailFormError("Für diese Adresse sind keine Einstellungen bekannt. Die Felder enthalten übliche Werte; prüfe sie mit den Angaben deines Anbieters.");
+                break;
+            case OperationResult<MailServerSettings?>.Failure failure:
+                ShowEmailFormError(failure.Error.Message);
+                break;
+        }
+    }
+
+    [RelayCommand]
+    private async AsyncTask ConnectEmailAsync()
+    {
+        if (!CanInteract) return;
+        ClearEmailFormError();
+        MailServerSettings? settings = null;
+        if (ShowServerSettings && !TryReadServerSettings(out settings)) return;
+
+        var request = new MailConnectionRequest(EmailAddress, EmailPassword, settings);
+        var connected = false;
+        await RunConnectionAsync(
+            "E-Mail wird verbunden …",
+            "Die Anmeldung beim Mailserver wird geprüft. Es wird nichts gesendet oder verändert.",
+            async cancellationToken =>
+            {
+                var result = await _setupService.ConnectEmailAsync(request, cancellationToken);
+                connected = result is OperationResult<ConnectionSummary>.Success;
+                return result;
+            },
+            error =>
+            {
+                IsEmailFormVisible = true;
+                if (error.Field == "settings")
+                {
+                    ShowServerSettings = true;
+                    if (string.IsNullOrWhiteSpace(ImapHost)) FillServerGuess();
+                }
+
+                ShowEmailFormError(error.Message);
+            });
+        if (connected)
+        {
+            IsEmailFormVisible = false;
+            EmailPassword = "";
+        }
+    }
+
+    public async AsyncTask DisconnectEmailAsync(string email)
     {
         if (!CanInteract) return;
         await RunConnectionAsync(
-            "Gmail wird deaktiviert …",
-            "Der lokale E-Mail-Zugriff wird ausgeschaltet.",
-            cancellationToken => _setupService.DisableEmailAsync(accountKey, cancellationToken));
+            "E-Mail wird getrennt …",
+            "Die Postfach-Einstellungen und das gespeicherte Passwort werden entfernt.",
+            cancellationToken => _setupService.DisconnectEmailAsync(email, cancellationToken));
     }
+
+    private bool TryReadServerSettings(out MailServerSettings? settings)
+    {
+        settings = null;
+        if (string.IsNullOrWhiteSpace(ImapHost) || string.IsNullOrWhiteSpace(SmtpHost)
+            || !int.TryParse(ImapPort, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var imapPort)
+            || !int.TryParse(SmtpPort, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var smtpPort)
+            || imapPort is < 1 or > 65535 || smtpPort is < 1 or > 65535)
+        {
+            ShowEmailFormError("Prüfe die Servereinstellungen: Servername und Port (1–65535) sind erforderlich.");
+            return false;
+        }
+
+        settings = new MailServerSettings(
+            new MailServer(ImapHost.Trim(), imapPort, Security(ImapSecurityIndex)),
+            new MailServer(SmtpHost.Trim(), smtpPort, Security(SmtpSecurityIndex)),
+            string.IsNullOrWhiteSpace(MailUsername) ? null : MailUsername.Trim());
+        return true;
+    }
+
+    private void FillServerSettings(MailServerSettings settings)
+    {
+        ShowServerSettings = true;
+        MailUsername = settings.Username ?? "";
+        ImapHost = settings.Imap.Host;
+        ImapPort = settings.Imap.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        ImapSecurityIndex = SecurityIndex(settings.Imap.Security);
+        SmtpHost = settings.Smtp.Host;
+        SmtpPort = settings.Smtp.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        SmtpSecurityIndex = SecurityIndex(settings.Smtp.Security);
+    }
+
+    private void FillServerGuess()
+    {
+        var domain = EmailAddress.Contains('@', StringComparison.Ordinal) ? EmailAddress[(EmailAddress.LastIndexOf('@') + 1)..].Trim() : "";
+        if (domain.Length == 0) return;
+        FillServerSettings(new MailServerSettings(
+            new MailServer($"imap.{domain}", 993, MailSecurity.SslOnConnect),
+            new MailServer($"smtp.{domain}", 465, MailSecurity.SslOnConnect)));
+    }
+
+    private void ShowEmailFormError(string message)
+    {
+        EmailFormError = message;
+        HasEmailFormError = true;
+    }
+
+    private void ClearEmailFormError()
+    {
+        EmailFormError = "";
+        HasEmailFormError = false;
+    }
+
+    private static MailSecurity Security(int index) => index == 1 ? MailSecurity.StartTls : MailSecurity.SslOnConnect;
+    private static int SecurityIndex(MailSecurity security) => security == MailSecurity.StartTls ? 1 : 0;
 
     [RelayCommand]
     private async AsyncTask InstallRendererAsync()
@@ -271,7 +451,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         CanCancelConnection = false;
-        StatusTitle = "Google-Anmeldung wird abgebrochen …";
+        StatusTitle = "Wird abgebrochen …";
         StatusDetail = "Der aktuelle Anmeldeversuch wird beendet.";
         _connectionCancellation.Cancel();
     }
@@ -288,6 +468,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _disconnectAccountKey = account.Key;
         DisconnectAccountEmail = account.Email;
         IsDisconnectConfirmationVisible = true;
+        IsEmailFormVisible = false;
         HasFeedback = false;
     }
 
@@ -319,7 +500,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 ApplyLocalState(success.Value);
                 HasFeedback = true;
                 IsFeedbackError = false;
-                Feedback = "Google-Konto wurde getrennt.";
+                Feedback = "Konto wurde getrennt.";
                 break;
             case OperationResult<SetupSnapshot>.Failure failure:
                 ShowError(failure.Error.Message);
@@ -335,7 +516,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private async AsyncTask RunConnectionAsync(
         string busyTitle,
         string busyDetail,
-        Func<CancellationToken, System.Threading.Tasks.Task<OperationResult<ConnectionSummary>>> action)
+        Func<CancellationToken, System.Threading.Tasks.Task<OperationResult<ConnectionSummary>>> action,
+        Action<OperationError>? onFailure = null)
     {
         if (!CanInteract)
         {
@@ -365,6 +547,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 case OperationResult<ConnectionSummary>.Success success:
                     ApplyConnectedState(success.Value);
                     break;
+                case OperationResult<ConnectionSummary>.Failure failure when onFailure is not null:
+                    RestoreUiState(previousState);
+                    onFailure(failure.Error);
+                    break;
                 case OperationResult<ConnectionSummary>.Failure failure:
                     ApplyConnectionError(failure.Error.Message);
                     break;
@@ -375,7 +561,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             RestoreUiState(previousState);
             HasFeedback = true;
             IsFeedbackError = false;
-            Feedback = "Google-Anmeldung wurde abgebrochen.";
+            Feedback = "Anmeldung wurde abgebrochen.";
         }
         finally
         {
@@ -442,8 +628,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
         else
         {
-            StatusTitle = "Google-Anmeldung fehlt";
-            StatusDetail = "Wähle, welche Google-Dienste du für dein erstes Konto verbinden möchtest.";
+            StatusTitle = "Noch kein Konto verbunden";
+            StatusDetail = "Verbinde Google für Kalender und Aufgaben oder ein E-Mail-Postfach.";
             ConnectionActionText = "Mit Google anmelden";
         }
     }
@@ -468,11 +654,23 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         HasAccounts = Accounts.Count > 0;
         IsConnected = Accounts.Any(account => account.CalendarTasksConnected || account.EmailConnected);
-        NeedsCredentials = false;
-        ShowConnectionAction = false;
-        StatusTitle = Accounts.Count == 1 ? "1 Google-Konto konfiguriert" : $"{Accounts.Count} Google-Konten konfiguriert";
+        // Mailboxes work without a Google OAuth client, so keep offering the import for calendar and tasks.
+        NeedsCredentials = !_setupService.Inspect().CredentialsPresent;
+        ShowConnectionAction = !HasAccounts && !NeedsCredentials;
+        if (!HasAccounts)
+        {
+            StatusTitle = "Noch kein Konto verbunden";
+            StatusDetail = "Verbinde Google für Kalender und Aufgaben oder ein E-Mail-Postfach.";
+            ConnectionActionText = "Mit Google anmelden";
+            HasFeedback = false;
+            IsFeedbackError = false;
+            Feedback = "";
+            return;
+        }
+
+        StatusTitle = Accounts.Count == 1 ? "1 Konto konfiguriert" : $"{Accounts.Count} Konten konfiguriert";
         StatusDetail = HasDisconnectedServices ? "Nicht alle aktivierten Dienste sind verbunden. Details stehen beim jeweiligen Konto."
-            : IsConnected ? "Aktivierte Google-Dienste sind einsatzbereit." : "Für diese Konten ist derzeit kein Dienst verbunden.";
+            : IsConnected ? "Aktivierte Dienste sind einsatzbereit." : "Für diese Konten ist derzeit kein Dienst verbunden.";
         HasFeedback = false;
         IsFeedbackError = false;
         Feedback = "";

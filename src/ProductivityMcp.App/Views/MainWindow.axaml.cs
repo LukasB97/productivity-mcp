@@ -68,9 +68,15 @@ public sealed partial class MainWindow : Window
         if (sender is Button { Tag: ConnectedAccountViewModel account } &&
             DataContext is MainWindowViewModel viewModel)
         {
-            if (account.EmailEnabled) await viewModel.DisableEmailAsync(account.Key);
-            else await viewModel.EnableEmailAsync(account.Key);
+            if (account.EmailEnabled) await viewModel.DisconnectEmailAsync(account.Email);
+            else viewModel.OpenEmailFormFor(account.Email);
         }
+    }
+
+    private void RenewEmail_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string email } && DataContext is MainWindowViewModel viewModel)
+            viewModel.OpenEmailFormFor(email);
     }
 
     private async void ReconnectAccount_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

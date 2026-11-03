@@ -2,11 +2,15 @@ using System.Text.Json;
 
 namespace ProductivityMcp.Providers.Google;
 
+/// <summary>A Google account connected for calendar and tasks.</summary>
+/// <remarks>
+/// <see cref="CalendarTasksEnabled"/> is false only for legacy Gmail-only registrations
+/// from builds that used the Gmail API. Those entries are ignored; email now uses IMAP.
+/// </remarks>
 public sealed record GoogleAccountRegistration(
     string Key,
     string Email,
-    bool CalendarTasksEnabled = true,
-    bool EmailEnabled = false);
+    bool CalendarTasksEnabled = true);
 
 public sealed class GoogleAccountCatalog(GoogleOptions baseOptions)
 {
@@ -18,7 +22,7 @@ public sealed class GoogleAccountCatalog(GoogleOptions baseOptions)
 
     public IReadOnlyList<GoogleAccountRegistration> List()
     {
-        var registrations = ReadStored().ToList();
+        var registrations = ReadStored().Where(item => item.CalendarTasksEnabled).ToList();
         if (HasToken(PrimaryAccountKey) && registrations.All(item => item.Key != PrimaryAccountKey))
         {
             registrations.Insert(0, new GoogleAccountRegistration(PrimaryAccountKey, "Google-Konto"));
@@ -31,8 +35,6 @@ public sealed class GoogleAccountCatalog(GoogleOptions baseOptions)
     {
         TokenStorePath = TokenDirectory(accountKey),
     };
-
-    public GoogleOptions EmailOptionsFor(string accountKey) => OptionsFor(accountKey);
 
     public static string CreateAccountKey() => Guid.NewGuid().ToString("N");
 
@@ -56,13 +58,7 @@ public sealed class GoogleAccountCatalog(GoogleOptions baseOptions)
     public bool HasToken(string accountKey) =>
         File.Exists(Path.Combine(TokenDirectory(accountKey), GoogleServiceFactory.TokenFileName));
 
-    public bool HasEmailToken(string accountKey) =>
-        HasToken(accountKey);
-
-    public bool HasAnyToken() => List().Any(item => HasToken(item.Key) || HasEmailToken(item.Key));
-
-    public string EmailTokenDirectory(string accountKey) =>
-        Path.Combine(TokenDirectory(accountKey), "email");
+    public bool HasAnyToken() => List().Any(item => HasToken(item.Key));
 
     public string TokenDirectory(string accountKey) =>
         string.Equals(accountKey, PrimaryAccountKey, StringComparison.Ordinal)

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using ProductivityMcp.Core;
 using ProductivityMcp.Email;
 using ProductivityMcp.Providers.Google;
+using ProductivityMcp.Providers.Imap;
 using ProductivityMcp.Server;
 
 var options = GoogleOptions.FromEnvironment();
@@ -17,12 +18,13 @@ builder.Logging.AddConsole(console =>
 });
 
 builder.Services.AddSingleton(options);
+builder.Services.AddSingleton(new MailAccountCatalog(MailOptions.FromEnvironment()));
 builder.Services.AddSingleton<MultiGoogleProvider>();
 builder.Services.AddSingleton<EmailContentService>();
-builder.Services.AddSingleton<MultiGoogleEmailProvider>();
+builder.Services.AddSingleton<MultiImapEmailProvider>();
 builder.Services.AddSingleton<ICalendarProvider>(services => services.GetRequiredService<MultiGoogleProvider>());
 builder.Services.AddSingleton<ITasksProvider>(services => services.GetRequiredService<MultiGoogleProvider>());
-builder.Services.AddSingleton<IEmailProvider>(services => services.GetRequiredService<MultiGoogleEmailProvider>());
+builder.Services.AddSingleton<IEmailProvider>(services => services.GetRequiredService<MultiImapEmailProvider>());
 
 builder.Services
     .AddMcpServer()
