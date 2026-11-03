@@ -42,7 +42,7 @@
         </Border>
         <StackPanel Grid.Column="1" VerticalAlignment="Center">
           <TextBlock Text="Productivity MCP" FontSize="24" FontWeight="SemiBold" />
-          <TextBlock Text="Deine Google-Konten für deinen KI-Assistenten" Classes="muted" />
+          <TextBlock Text="Kalender, Aufgaben und E-Mail für deinen KI-Assistenten" Classes="muted" />
         </StackPanel>
       </Grid>
 
@@ -63,10 +63,12 @@
 
       <Border Classes="card" IsVisible="{Binding NeedsCredentials}">
         <StackPanel Spacing="12">
-          <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" />
-          <TextBlock Text="{Binding StatusDetail}" Classes="muted" />
-          <Button Classes="primary" Content="OAuth-Datei auswählen …"
-                  Click="ChooseCredentials_OnClick" IsEnabled="{Binding CanInteract}" />
+          <TextBlock Text="Google einrichten" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="Für Kalender und Aufgaben wähle einmalig die OAuth-Datei aus der Google Cloud Console aus. E-Mail-Postfächer brauchen sie nicht." Classes="muted" />
+          <WrapPanel IsEnabled="{Binding CanInteract}">
+            <Button Classes="primary" Content="OAuth-Datei auswählen …" Click="ChooseCredentials_OnClick" />
+            <Button Content="Nur E-Mail verbinden" Command="{Binding OpenEmailFormCommand}" />
+          </WrapPanel>
         </StackPanel>
       </Border>
 
@@ -75,8 +77,64 @@
           <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" />
           <TextBlock Text="{Binding StatusDetail}" Classes="muted" />
           <WrapPanel IsEnabled="{Binding CanInteract}">
-            <Button Classes="primary" Content="Kalender und Aufgaben verbinden" Command="{Binding ConnectCommand}" />
-            <Button Content="Nur E-Mail verbinden" Command="{Binding AddEmailAccountCommand}" />
+            <Button Classes="primary" Content="Google: Kalender und Aufgaben" Command="{Binding ConnectCommand}" />
+            <Button Content="E-Mail-Postfach verbinden" Command="{Binding OpenEmailFormCommand}" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" IsVisible="{Binding IsEmailFormVisible}">
+        <StackPanel Spacing="12">
+          <TextBlock Text="E-Mail-Postfach verbinden" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Classes="muted"
+                     Text="Die App verbindet sich per IMAP und SMTP direkt mit deinem Postfach. Das Passwort wird verschlüsselt nur auf diesem Gerät gespeichert." />
+          <StackPanel Spacing="4">
+            <TextBlock Text="E-Mail-Adresse" FontWeight="SemiBold" />
+            <TextBox Text="{Binding EmailAddress}" IsReadOnly="{Binding IsEmailAddressLocked}"
+                     PlaceholderText="name@example.com" AutomationProperties.Name="E-Mail-Adresse" />
+          </StackPanel>
+          <Border Background="#F0F0FF" CornerRadius="8" Padding="14" IsVisible="{Binding ShowGmailHelp}">
+            <StackPanel Spacing="6">
+              <TextBlock Text="Gmail braucht ein App-Passwort" FontWeight="SemiBold" />
+              <TextBlock Text="Dein normales Google-Passwort funktioniert hier nicht. Aktiviere die Bestätigung in zwei Schritten und erstelle dann ein App-Passwort. Firmen- und Schulkonten erlauben das oft nicht." />
+              <HyperlinkButton Content="App-Passwort erstellen" NavigateUri="https://myaccount.google.com/apppasswords" />
+            </StackPanel>
+          </Border>
+          <StackPanel Spacing="4">
+            <TextBlock Text="Passwort oder App-Passwort" FontWeight="SemiBold" />
+            <TextBox Text="{Binding EmailPassword}" PasswordChar="•" AutomationProperties.Name="Passwort oder App-Passwort" />
+          </StackPanel>
+          <Expander Header="Servereinstellungen" IsExpanded="{Binding ShowServerSettings}"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+            <StackPanel Spacing="10">
+              <TextBlock Classes="muted" Text="Für bekannte Anbieter werden die Einstellungen automatisch ermittelt. Trage sie nur ein, wenn dein Anbieter andere Werte nennt." />
+              <Button Content="Automatisch ermitteln" Command="{Binding DetectServerSettingsCommand}" />
+              <Grid ColumnDefinitions="*,90,130" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+                <TextBlock Text="IMAP-Server (Empfang)" />
+                <TextBlock Grid.Column="1" Text="Port" />
+                <TextBlock Grid.Column="2" Text="Verschlüsselung" />
+                <TextBox Grid.Row="1" Text="{Binding ImapHost}" AutomationProperties.Name="IMAP-Server" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ImapPort}" AutomationProperties.Name="IMAP-Port" />
+                <ComboBox Grid.Row="1" Grid.Column="2" ItemsSource="{x:Static vm:MainWindowViewModel.SecurityChoices}"
+                          SelectedIndex="{Binding ImapSecurityIndex}" HorizontalAlignment="Stretch"
+                          AutomationProperties.Name="IMAP-Verschlüsselung" />
+                <TextBlock Grid.Row="2" Text="SMTP-Server (Versand)" />
+                <TextBox Grid.Row="3" Text="{Binding SmtpHost}" AutomationProperties.Name="SMTP-Server" />
+                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding SmtpPort}" AutomationProperties.Name="SMTP-Port" />
+                <ComboBox Grid.Row="3" Grid.Column="2" ItemsSource="{x:Static vm:MainWindowViewModel.SecurityChoices}"
+                          SelectedIndex="{Binding SmtpSecurityIndex}" HorizontalAlignment="Stretch"
+                          AutomationProperties.Name="SMTP-Verschlüsselung" />
+              </Grid>
+              <StackPanel Spacing="4">
+                <TextBlock Text="Benutzername (falls abweichend von der Adresse)" />
+                <TextBox Text="{Binding MailUsername}" AutomationProperties.Name="Benutzername" />
+              </StackPanel>
+            </StackPanel>
+          </Expander>
+          <TextBlock Text="{Binding EmailFormError}" IsVisible="{Binding HasEmailFormError}" Foreground="#9A3412" />
+          <WrapPanel IsEnabled="{Binding CanInteract}">
+            <Button Classes="primary" Content="Verbinden" Command="{Binding ConnectEmailCommand}" />
+            <Button Content="Abbrechen" Command="{Binding CancelEmailFormCommand}" />
           </WrapPanel>
         </StackPanel>
       </Border>
@@ -86,8 +144,8 @@
           <TextBlock Text="{Binding StatusTitle}" FontSize="20" FontWeight="SemiBold" />
           <TextBlock Text="{Binding StatusDetail}" Classes="muted" />
           <WrapPanel IsEnabled="{Binding CanInteract}" Margin="0,6,0,0">
-            <Button Content="Kalender-/Aufgabenkonto hinzufügen" Command="{Binding AddAccountCommand}" />
-            <Button Content="E-Mail-Konto hinzufügen" Command="{Binding AddEmailAccountCommand}" />
+            <Button Content="Google-Konto hinzufügen" Command="{Binding AddAccountCommand}" />
+            <Button Content="E-Mail-Postfach hinzufügen" Command="{Binding OpenEmailFormCommand}" />
             <Button Content="Verbindung prüfen" Command="{Binding RefreshCommand}" />
           </WrapPanel>
         </StackPanel>
@@ -96,7 +154,7 @@
                 BorderBrush="#FED7AA" BorderThickness="1" CornerRadius="10" Padding="16">
           <StackPanel Spacing="12">
             <TextBlock Text="{Binding DisconnectAccountEmail, StringFormat='{}{0} wirklich trennen?'}" FontWeight="SemiBold" />
-            <TextBlock Text="Die lokale Anmeldung wird entfernt. Deine Daten bei Google bleiben erhalten." />
+            <TextBlock Text="Die lokale Anmeldung und ein gespeichertes Mail-Passwort werden entfernt. Deine Daten beim Anbieter bleiben erhalten." />
             <WrapPanel>
               <Button Content="Abbrechen" Command="{Binding CancelDisconnectCommand}" />
               <Button Content="Konto trennen" Command="{Binding ConfirmDisconnectCommand}" />
@@ -118,8 +176,10 @@
                   </Grid>
                   <TextBlock Text="{Binding ConnectionError}" IsVisible="{Binding HasConnectionError}" Foreground="#9A3412" />
                   <WrapPanel>
-                    <Button Classes="primary" Content="Erneut anmelden" IsVisible="{Binding NeedsReconnect}"
+                    <Button Classes="primary" Content="Bei Google erneut anmelden" IsVisible="{Binding NeedsGoogleReconnect}"
                             Tag="{Binding Key}" Click="ReconnectAccount_OnClick" />
+                    <Button Classes="primary" Content="Mail-Passwort erneuern" IsVisible="{Binding NeedsEmailReconnect}"
+                            Tag="{Binding Email}" Click="RenewEmail_OnClick" />
                     <Button Content="{Binding EmailActionText}" Tag="{Binding}" Click="EmailAccount_OnClick" />
                     <Button Content="Konto trennen" Tag="{Binding Key}" Click="DisconnectAccount_OnClick" />
                   </WrapPanel>

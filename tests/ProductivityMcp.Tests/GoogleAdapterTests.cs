@@ -10,16 +10,17 @@ namespace ProductivityMcp.Tests;
 public sealed class GoogleAdapterTests
 {
     [TestMethod]
-    public void GoogleScopes_RequestOnlyCapabilitiesUsedByThePublicApi()
+    public void GoogleScopes_RequestOnlyCalendarAndTasksWithoutRestrictedGmailScopes()
     {
-        var scopes = GoogleServiceFactory.GetScopes(GoogleServiceAccess.Combined);
+        var scopes = GoogleServiceFactory.Scopes;
 
         CollectionAssert.Contains(scopes, Google.Apis.Calendar.v3.CalendarService.Scope.CalendarEvents);
         CollectionAssert.Contains(scopes, Google.Apis.Calendar.v3.CalendarService.Scope.CalendarCalendarlistReadonly);
         CollectionAssert.Contains(scopes, Google.Apis.Tasks.v1.TasksService.Scope.Tasks);
-        CollectionAssert.Contains(scopes, Google.Apis.Gmail.v1.GmailService.Scope.GmailModify);
         CollectionAssert.DoesNotContain(scopes, Google.Apis.Calendar.v3.CalendarService.Scope.Calendar);
-        Assert.HasCount(4, scopes);
+        Assert.IsFalse(scopes.Any(scope => scope.Contains("mail.google.com", StringComparison.Ordinal) || scope.Contains("/gmail.", StringComparison.Ordinal)),
+            "Gmail scopes are restricted and would require Google's annual security assessment.");
+        Assert.HasCount(3, scopes);
     }
 
     [TestMethod]

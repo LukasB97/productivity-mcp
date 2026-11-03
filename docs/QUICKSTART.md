@@ -1,6 +1,6 @@
 # Start here
 
-Productivity MCP runs locally. The configuration app connects your Google accounts;
+Productivity MCP runs locally. The configuration app connects your Google accounts and mailboxes;
 your AI client starts the separate MCP server. Leaving the app open is not required.
 
 ## Connect an account
@@ -11,17 +11,22 @@ your AI client starts the separate MCP server. Leaving the app open is not requi
    macOS/Linux. These are unsigned portable builds, not installers or macOS app bundles.
 3. If prompted for an OAuth file, import your Google **Desktop app** client JSON.
    Source/local packages do not bundle a client unless the packager explicitly supplies one.
-4. Choose **Kalender und Aufgaben verbinden** or **Nur E-Mail verbinden**. Sign in
-   through your browser and allow the selected permissions. Adding Gmail to an
-   existing account requests all its enabled services again.
+4. Choose **Google: Kalender und Aufgaben** and sign in through your browser, and/or
+   **E-Mail-Postfach verbinden** with your address and password. Gmail needs an
+   [app password](https://myaccount.google.com/apppasswords) (2-Step Verification
+   required); your normal Google password is rejected. Common providers are detected
+   automatically; otherwise enter the IMAP/SMTP settings from your provider. Some
+   providers (GMX, web.de) require enabling IMAP in their web settings first.
 5. Check each service's status. **Verbindung prüfen** checks existing access;
-   **Erneut anmelden** starts a new sign-in. Cancellation keeps the previous token.
+   **Bei Google erneut anmelden** starts a new sign-in, **Mail-Passwort erneuern**
+   replaces a rejected password. Cancellation keeps the previous token.
 
 The app's interface is German. Each account card shows whether Calendar/Tasks and
 email are connected independently. Expand the resource row to see calendar and
 task-list names. **Einstellungen** contains optional app autostart and the email
-image renderer. Disabling email blocks it locally; it does not revoke Google's
-permission. Disconnecting removes the local account token, not your Google data.
+image renderer. **E-Mail trennen** removes the stored mail password locally; revoke a
+Gmail app password in your Google account to cut access entirely. Disconnecting removes
+the local account token, not your Google data.
 
 ## Configure the AI client
 

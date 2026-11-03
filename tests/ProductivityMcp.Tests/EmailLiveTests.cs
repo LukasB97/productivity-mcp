@@ -1,7 +1,6 @@
-using ProductivityMcp.App.Services;
 using ProductivityMcp.Core;
 using ProductivityMcp.Email;
-using ProductivityMcp.Providers.Google;
+using ProductivityMcp.Providers.Imap;
 
 namespace ProductivityMcp.Tests;
 
@@ -10,25 +9,32 @@ public sealed class EmailLiveTests
 {
     [TestMethod]
     [TestCategory("Live")]
-    public async System.Threading.Tasks.Task Gmail_EndToEndAgainstOwnAccount()
+    public async System.Threading.Tasks.Task Mailbox_EndToEndAgainstOwnAccount()
     {
         if (!string.Equals(Environment.GetEnvironmentVariable("PRODUCTIVITY_MCP_LIVE_TESTS"), "1", StringComparison.Ordinal))
-            Assert.Inconclusive("Set PRODUCTIVITY_MCP_LIVE_TESTS=1 to run the opt-in Gmail test.");
+            Assert.Inconclusive("Set PRODUCTIVITY_MCP_LIVE_TESTS=1 to run the opt-in mailbox test.");
 
-        var options = GoogleOptions.FromEnvironment();
         var account = Environment.GetEnvironmentVariable("PRODUCTIVITY_MCP_LIVE_ACCOUNT");
         if (string.IsNullOrWhiteSpace(account))
             Assert.Inconclusive("Set PRODUCTIVITY_MCP_LIVE_ACCOUNT to an explicitly authorized test mailbox. Tests only send to that same address.");
-        var catalog = new GoogleAccountCatalog(options);
-        var registration = catalog.List().Single(x =>
-            string.Equals(x.Email, account, StringComparison.OrdinalIgnoreCase));
-        if (!registration.EmailEnabled || !catalog.HasEmailToken(registration.Key))
-        {
-            Assert.Inconclusive("Connect this account with E-Mail enabled in the configuration app before running live tests.");
-        }
+        var options = MailOptions.FromEnvironment();
+        var catalog = new MailAccountCatalog(options);
+        var registration = catalog.Find(account);
+        if (registration is null)
+            Assert.Inconclusive("Connect this mailbox in the configuration app before running live tests.");
 
-        var provider = new MultiGoogleEmailProvider(options, new EmailContentService());
-        var marker = $"[productivity-mcp-live-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}]";
+        var provider = new MultiImapEmailProvider(catalog, new EmailContentService());
+        var gmail = MultiImapEmailProvider.ProviderName(registration) == "gmail";
+        await MailboxScenario.RunAsync(provider, account, gmail);
+    }
+}
+
+/// <summary>Exercises every email tool against a real mailbox, sending only to that mailbox.</summary>
+internal static class MailboxScenario
+{
+    public static async System.Threading.Tasks.Task RunAsync(IEmailProvider provider, string account, bool gmail)
+    {
+        var marker = $"[productivity-mcp-live-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}]";
         var attachmentPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.txt");
         string? downloadedPath = null;
         await File.WriteAllTextAsync(attachmentPath, marker);
@@ -43,22 +49,31 @@ public sealed class EmailLiveTests
                 Attachments = [new EmailAttachmentInput { Path = attachmentPath, Name = "live-test.txt" }],
             }));
             created.Add(sent.Id);
+            Assert.IsFalse(sent.Id.StartsWith("mid:", StringComparison.Ordinal), "The sent message should be readable from the Sent folder.");
 
-            var query = Success(await provider.QueryAsync(new EmailQuery
+            // Search indexes can lag a few seconds behind delivery.
+            EmailQueryResult query = null!;
+            for (var attempt = 0; attempt < 10; attempt++)
             {
-                Account = account,
-                Filter = new EmailFilter { Subject = marker },
-                PageSize = 10,
-            }));
+                query = Success(await provider.QueryAsync(new EmailQuery
+                {
+                    Account = account,
+                    Filter = new EmailFilter { Subject = marker, Mailbox = EmailMailbox.Sent },
+                    PageSize = 10,
+                }));
+                if (query.Messages.Any(x => x.Id == sent.Id)) break;
+                await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(2));
+            }
+
             Assert.IsTrue(query.Complete);
-            Assert.IsTrue(query.Messages.Any(x => x.Id == sent.Id));
+            Assert.IsTrue(query.Messages.Any(x => x.Id == sent.Id), "The sent message was not found by subject.");
             Assert.IsTrue(query.Messages.Single(x => x.Id == sent.Id).HasAttachments);
 
-            foreach (var format in new[] { EmailContentFormat.Plain, EmailContentFormat.Html, EmailContentFormat.Markdown, EmailContentFormat.Image })
+            foreach (var format in new[] { EmailContentFormat.Plain, EmailContentFormat.Html, EmailContentFormat.Markdown })
             {
                 var read = Success(await provider.GetMessagesAsync(account, [sent.Id], format, false));
                 Assert.IsNull(read.Single().Error);
-                Assert.IsNotNull(read.Single().Message);
+                StringAssert.Contains(read.Single().Message!.Body.Content, marker.Trim('[', ']'));
             }
 
             var full = Success(await provider.GetMessagesAsync(account, [sent.Id], EmailContentFormat.Plain, false)).Single().Message!;
@@ -78,6 +93,7 @@ public sealed class EmailLiveTests
                 ReplyToMessageId = sent.Id,
             }));
             created.Add(reply.Id);
+            Assert.AreEqual(sent.ThreadId, reply.ThreadId, "A reply must stay in the original thread.");
 
             var forwarded = Success(await provider.ForwardAsync(
                 account, sent.Id, [account], [], [], new(EmailComposeFormat.Markdown, "Forward prefix")));
@@ -96,22 +112,27 @@ public sealed class EmailLiveTests
                 Body = new(EmailComposeFormat.Markdown, $"Draft {marker}"),
             }));
             Assert.AreEqual(draft.DraftId, updatedDraft.DraftId);
-            var threadedDraft = Success(await provider.GetMessagesAsync(account, [updatedDraft.MessageId], EmailContentFormat.Plain, false));
-            Assert.AreEqual(sent.ThreadId, threadedDraft.Single().Message!.ThreadId);
-            Assert.IsTrue(Success(await provider.ListDraftsAsync(account, 50, null)).Drafts.Any(x => x.DraftId == draft.DraftId));
+            var drafts = Success(await provider.ListDraftsAsync(account, 50, null)).Drafts;
+            Assert.AreEqual(1, drafts.Count(x => x.DraftId == draft.DraftId), "Updating a draft must not leave the old version behind.");
             var draftSent = Success(await provider.SendDraftAsync(account, draft.DraftId));
             created.Add(draftSent.Id);
+            Assert.IsFalse(Success(await provider.ListDraftsAsync(account, 50, null)).Drafts.Any(x => x.DraftId == draft.DraftId));
 
-            var label = Success(await provider.CreateLabelAsync(account, "ProductivityMcp-Test"));
-            Assert.IsTrue(Success(await provider.ListLabelsAsync(account)).Any(x => x.Id == label.Id));
-            var changed = Success(await provider.UpdateAsync(account, [sent.Id], new EmailMessagePatch
+            var labels = Success(await provider.ListLabelsAsync(account));
+            Assert.IsTrue(labels.Any(x => x.Id == "INBOX"));
+            var patch = new EmailMessagePatch { Unread = true, Starred = true };
+            if (gmail)
             {
-                Unread = true,
-                Starred = true,
-                Important = true,
-                AddLabels = [label.Name],
-            }));
-            Assert.IsTrue(changed.Single().Success);
+                var label = Success(await provider.CreateLabelAsync(account, "ProductivityMcp-Test"));
+                Assert.IsTrue(Success(await provider.ListLabelsAsync(account)).Any(x => x.Id == label.Id));
+                patch = patch with { Important = true, AddLabels = [label.Name] };
+            }
+
+            Assert.IsTrue(Success(await provider.UpdateAsync(account, [sent.Id], patch)).Single().Success);
+            var updated = Success(await provider.GetMessagesAsync(account, [sent.Id], EmailContentFormat.Plain, false)).Single().Message!;
+            Assert.IsTrue(updated.Unread);
+            Assert.IsTrue(updated.Starred);
+            if (gmail) Assert.IsTrue(updated.Important);
             Assert.IsTrue(Success(await provider.ArchiveAsync(account, [sent.Id])).Single().Success);
         }
         finally
@@ -122,7 +143,7 @@ public sealed class EmailLiveTests
         }
     }
 
-    private static T Success<T>(OperationResult<T> result) => result switch
+    public static T Success<T>(OperationResult<T> result) => result switch
     {
         OperationResult<T>.Success success => success.Value,
         OperationResult<T>.Failure failure => throw new AssertFailedException(

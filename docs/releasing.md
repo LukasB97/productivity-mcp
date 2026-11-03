@@ -55,8 +55,9 @@ Only after a maintainer approves publication:
 1. Review `CHANGELOG.md`, dependency/security results and unresolved release notes.
 2. Change the development version suffix to the intended release version and commit.
 3. Verify from that clean commit; keep user tokens and real-account data out of all assets.
-4. Check Google OAuth verification/test-user restrictions separately. Gmail scopes
-   require Google's corresponding verification process.
+4. Check Google OAuth verification/test-user restrictions separately. The app
+   requests only Calendar and Tasks scopes (sensitive, no security assessment);
+   email uses IMAP/SMTP and needs no Google verification.
 5. Smoke-test the packaged app and stdio server on the advertised platforms.
 6. Create the version tag and GitHub release explicitly, uploading archives and checksums.
 

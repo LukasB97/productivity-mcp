@@ -6,6 +6,7 @@ using ProductivityMcp.App.Services;
 using ProductivityMcp.App.ViewModels;
 using ProductivityMcp.App.Views;
 using ProductivityMcp.Core;
+using ProductivityMcp.Providers.Imap;
 
 namespace ProductivityMcp.UiPreview;
 
@@ -62,7 +63,8 @@ internal sealed class PreviewSetupService : IGoogleSetupService
         ])));
     public Task<OperationResult<ConnectionSummary>> AddAccountAsync(CancellationToken cancellationToken = default) => ConnectAsync(cancellationToken);
     public Task<OperationResult<ConnectionSummary>> ReconnectAsync(string accountKey, CancellationToken cancellationToken = default) => ConnectAsync(cancellationToken);
-    public Task<OperationResult<ConnectionSummary>> AddEmailAccountAsync(CancellationToken cancellationToken = default) => ConnectAsync(cancellationToken);
-    public Task<OperationResult<ConnectionSummary>> EnableEmailAsync(string accountKey, CancellationToken cancellationToken = default) => ConnectAsync(cancellationToken);
-    public Task<OperationResult<ConnectionSummary>> DisableEmailAsync(string accountKey, CancellationToken cancellationToken = default) => ConnectAsync(cancellationToken);
+    public Task<OperationResult<MailServerSettings?>> DiscoverMailServerAsync(string email, CancellationToken cancellationToken = default) =>
+        System.Threading.Tasks.Task.FromResult(OperationResult.Ok<MailServerSettings?>(null));
+    public Task<OperationResult<ConnectionSummary>> ConnectEmailAsync(MailConnectionRequest request, CancellationToken cancellationToken = default) => ConnectAsync(cancellationToken);
+    public Task<OperationResult<ConnectionSummary>> DisconnectEmailAsync(string email, CancellationToken cancellationToken = default) => ConnectAsync(cancellationToken);
 }

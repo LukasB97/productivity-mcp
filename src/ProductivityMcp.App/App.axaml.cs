@@ -9,6 +9,7 @@ using ProductivityMcp.App.ViewModels;
 using ProductivityMcp.App.Views;
 using ProductivityMcp.Email;
 using ProductivityMcp.Providers.Google;
+using ProductivityMcp.Providers.Imap;
 
 namespace ProductivityMcp.App;
 
@@ -34,7 +35,7 @@ public sealed partial class App : Application
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
             var options = GoogleOptions.FromEnvironment();
-            var setupService = new GoogleSetupService(options);
+            var setupService = new GoogleSetupService(options, new MailAccountCatalog(MailOptions.FromEnvironment()));
             var autostartService = new AutostartService();
             var emailContent = new EmailContentService();
             _viewModel = new MainWindowViewModel(setupService, autostartService, emailContent);

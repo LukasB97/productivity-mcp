@@ -1,4 +1,5 @@
 using ProductivityMcp.Core;
+using ProductivityMcp.Providers.Imap;
 
 namespace ProductivityMcp.App.Services;
 
@@ -14,11 +15,13 @@ public interface IGoogleSetupService
 
     Task<OperationResult<ConnectionSummary>> ReconnectAsync(string accountKey, CancellationToken cancellationToken = default);
 
-    Task<OperationResult<ConnectionSummary>> AddEmailAccountAsync(CancellationToken cancellationToken = default);
+    /// <summary>Finds IMAP/SMTP settings; succeeds with <c>null</c> when they must be entered manually.</summary>
+    Task<OperationResult<MailServerSettings?>> DiscoverMailServerAsync(string email, CancellationToken cancellationToken = default);
 
-    Task<OperationResult<ConnectionSummary>> EnableEmailAsync(string accountKey, CancellationToken cancellationToken = default);
+    /// <summary>Verifies IMAP and SMTP sign-in, then stores the mailbox and its password.</summary>
+    Task<OperationResult<ConnectionSummary>> ConnectEmailAsync(MailConnectionRequest request, CancellationToken cancellationToken = default);
 
-    Task<OperationResult<ConnectionSummary>> DisableEmailAsync(string accountKey, CancellationToken cancellationToken = default);
+    Task<OperationResult<ConnectionSummary>> DisconnectEmailAsync(string email, CancellationToken cancellationToken = default);
 
     OperationResult<SetupSnapshot> Disconnect(string accountKey);
 }
@@ -42,5 +45,7 @@ public sealed record AccountConnectionSummary(
     bool EmailConnected = false,
     OperationError? CalendarTasksError = null,
     OperationError? EmailError = null);
+
+public sealed record MailConnectionRequest(string Email, string Password, MailServerSettings? Settings);
 
 public sealed record ConnectionSummary(IReadOnlyList<AccountConnectionSummary> Accounts);

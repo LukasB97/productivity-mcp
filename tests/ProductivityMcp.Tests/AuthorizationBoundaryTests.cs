@@ -8,14 +8,13 @@ namespace ProductivityMcp.Tests;
 public sealed class AuthorizationBoundaryTests
 {
     [TestMethod]
-    public void NewAuthorization_RequiresAllSelectedPermissions()
+    public void NewAuthorization_RequiresAllCalendarAndTaskPermissions()
     {
-        var calendarScopes = string.Join(' ', GoogleServiceFactory.GetScopes(GoogleServiceAccess.CalendarTasks));
-        GoogleServiceFactory.ValidateGrantedScopes(calendarScopes, GoogleServiceAccess.CalendarTasks, requireScopes: true);
+        GoogleServiceFactory.ValidateGrantedScopes(string.Join(' ', GoogleServiceFactory.Scopes), requireScopes: true);
         Assert.ThrowsExactly<AuthenticationRequiredException>(() =>
-            GoogleServiceFactory.ValidateGrantedScopes(calendarScopes, GoogleServiceAccess.Combined, requireScopes: true));
+            GoogleServiceFactory.ValidateGrantedScopes(GoogleServiceFactory.Scopes[0], requireScopes: true));
         Assert.ThrowsExactly<AuthenticationRequiredException>(() =>
-            GoogleServiceFactory.ValidateGrantedScopes(null, GoogleServiceAccess.Email, requireScopes: true));
+            GoogleServiceFactory.ValidateGrantedScopes(null, requireScopes: true));
     }
 
     [TestMethod]
@@ -23,8 +22,8 @@ public sealed class AuthorizationBoundaryTests
     {
         GoogleServiceFactory.ValidateGrantedScopes(
             "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/tasks https://mail.google.com/",
-            GoogleServiceAccess.Combined, requireScopes: true);
-        GoogleServiceFactory.ValidateGrantedScopes(null, GoogleServiceAccess.CalendarTasks, requireScopes: false);
+            requireScopes: true);
+        GoogleServiceFactory.ValidateGrantedScopes(null, requireScopes: false);
     }
 
     [TestMethod]

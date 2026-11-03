@@ -7,6 +7,8 @@ All notable changes to Productivity MCP are documented here. The project follows
 - Resolve calendar mutations before writing; reject ambiguous event IDs and support optional `calendarId` scoping.
 - Use CalendarList permissions for calendar preflight and prefer writable accounts for shared calendars.
 - Preserve nullable fields required by MCP result schemas and reserve stdout for protocol traffic.
+- Replace the Gmail API with IMAP/SMTP. Google sign-in now requests only Calendar and Tasks scopes, avoiding the restricted Gmail scopes and their annual security assessment. Gmail connects with an app password and keeps Gmail search syntax, labels, threads, and importance through Gmail's IMAP extensions; other IMAP providers (GMX, web.de, iCloud, Posteo, …) work with standard folders and search. Mailboxes previously connected through the Gmail API must be connected again with an app password.
+- Pin System.Security.Cryptography.Pkcs 10.0.14 (GHSA-846f-f764-76mx, pulled in by MimeKit).
 - Validate nested email bodies, attachments, recipients, query conditions and null collections.
 - Add explicit staged account reconnection, verify granted scopes, preserve existing access on cancellation, and keep MCP authentication noninteractive.
 - Show independent account/service errors and a reconnect action in a wrapping, scrollable configuration layout; move secondary settings into an expander.

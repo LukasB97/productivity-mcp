@@ -7,6 +7,7 @@ using ModelContextProtocol.Server;
 using ProductivityMcp.Core;
 using ProductivityMcp.Email;
 using ProductivityMcp.Providers.Google;
+using ProductivityMcp.Providers.Imap;
 using ProductivityMcp.Server;
 
 namespace ProductivityMcp.Tests;
@@ -57,7 +58,7 @@ public sealed class EmailTests
     }
 
     [TestMethod]
-    public void GoogleQuery_TranslatesNestedFiltersAndExactTimes()
+    public void GmailQuery_TranslatesNestedFiltersAndExactTimes()
     {
         var filter = new EmailFilter
         {
@@ -68,7 +69,7 @@ public sealed class EmailTests
             Not = new EmailFilter { Mailbox = EmailMailbox.Trash },
         };
 
-        var query = GoogleEmailQuery.Build(filter);
+        var query = GmailSearchQuery.Build(filter);
 
         StringAssert.Contains(query, "from:\"sender@example.com\"");
         StringAssert.Contains(query, $"after:{filter.After!.Value.ToUnixTimeSeconds()}");
@@ -279,12 +280,33 @@ public sealed class EmailTests
     }
 
     [TestMethod]
-    public void ExistingAccountJson_DefaultsEmailToDisabled()
+    public void ExistingAccountJson_KeepsCalendarAccountsAndIgnoresLegacyGmailOnlyEntries()
     {
-        var value = JsonSerializer.Deserialize<GoogleAccountRegistration>("{\"Key\":\"primary\",\"Email\":\"person@example.com\"}");
+        var value = JsonSerializer.Deserialize<GoogleAccountRegistration>(
+            "{\"Key\":\"primary\",\"Email\":\"person@example.com\",\"EmailEnabled\":true}");
 
         Assert.IsNotNull(value);
         Assert.IsTrue(value.CalendarTasksEnabled);
-        Assert.IsFalse(value.EmailEnabled);
+
+        var directory = Directory.CreateTempSubdirectory("ProductivityMcp.Accounts-");
+        try
+        {
+            var options = new GoogleOptions
+            {
+                CredentialsPath = Path.Combine(directory.FullName, "credentials.json"),
+                TokenStorePath = Path.Combine(directory.FullName, "tokens"),
+                AccountsPath = Path.Combine(directory.FullName, "accounts.json"),
+            };
+            File.WriteAllText(options.AccountsPath, """
+                [{"Key":"calendar","Email":"calendar@example.com","CalendarTasksEnabled":true,"EmailEnabled":true},
+                 {"Key":"legacy","Email":"gmail-only@example.com","CalendarTasksEnabled":false,"EmailEnabled":true}]
+                """);
+
+            var accounts = new GoogleAccountCatalog(options).List();
+
+            Assert.HasCount(1, accounts);
+            Assert.AreEqual("calendar@example.com", accounts[0].Email);
+        }
+        finally { directory.Delete(recursive: true); }
     }
 }

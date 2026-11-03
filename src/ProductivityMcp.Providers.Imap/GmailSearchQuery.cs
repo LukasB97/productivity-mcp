@@ -2,9 +2,10 @@ using System.Globalization;
 using System.Text;
 using ProductivityMcp.Core;
 
-namespace ProductivityMcp.Providers.Google;
+namespace ProductivityMcp.Providers.Imap;
 
-internal static class GoogleEmailQuery
+/// <summary>Translates provider-neutral filters into Gmail search syntax, used through IMAP X-GM-RAW.</summary>
+internal static class GmailSearchQuery
 {
     public static string Build(EmailFilter? filter)
     {
